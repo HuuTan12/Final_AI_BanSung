@@ -1,0 +1,9 @@
+# Core dependencies for Introduction to AI (503043) Final Project
+# Cross-platform compatibility: macOS 13.7.8 (Ventura) Intel Core i5 / Windows / Linux
+
+python-sat>=0.1.8.dev1  # PySAT library providing Glucose3 solver for Task 1
+pygame>=2.5.0           # Graphical User Interface for Task 2 (Tank Battle)
+matplotlib>=3.7.0       # Charting and benchmark visualization for Task 1 & 2
+numpy>=1.24.0           # Matrix and grid computations
+jupyter>=1.0.0          # Jupyter Notebook environment
+notebook>=7.0.0         # Notebook interface

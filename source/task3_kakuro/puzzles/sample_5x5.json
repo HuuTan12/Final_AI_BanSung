@@ -1,0 +1,17 @@
+{
+  "name": "Kakuro Sample 5x5 (Problem Page 4)",
+  "rows": 5,
+  "cols": 5,
+  "horizontal_clues": [
+    {"r": 1, "c": 1, "clue": 12, "length": 2},
+    {"r": 2, "c": 0, "clue": 21, "length": 4},
+    {"r": 3, "c": 0, "clue": 11, "length": 4},
+    {"r": 4, "c": 1, "clue": 16, "length": 2}
+  ],
+  "vertical_clues": [
+    {"r": 1, "c": 1, "clue": 14, "length": 3},
+    {"r": 0, "c": 2, "clue": 21, "length": 4},
+    {"r": 0, "c": 3, "clue": 14, "length": 4},
+    {"r": 1, "c": 4, "clue": 11, "length": 2}
+  ]
+}

@@ -1,0 +1,15 @@
+PROJECT DEMO VIDEO
+================================================================================
+Course: Introduction to Artificial Intelligence (503043)
+Project Group ID: <Group_ID>
+Student ID: <Student_ID>
+
+Demo Video URL:
+https://youtu.be/example_link_to_demo_video
+
+Notes:
+- Video duration: 5-10 minutes.
+- Walkthrough of Task 1 (SAT & Min-Conflicts benchmarks).
+- Walkthrough of Task 2 (Tank Battle Pygame UI & 4 Search configurations).
+- Walkthrough of Task 3 (Kakuro CSP visualization: domains, propagation, backtracking on 9x9).
+================================================================================
