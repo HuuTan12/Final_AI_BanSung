@@ -1,0 +1,86 @@
+classDiagram
+  class NQueensProblem {
+    +int n
+    +to_var(r, c) int
+    +to_coords(var_id) tuple
+    +is_valid_solution(queens) bool
+    +display(queens) void
+  }
+
+  class ConstraintGenerator {
+    -NQueensProblem problem
+    -int n
+    +generate_row_clauses() list
+    +generate_col_clauses() list
+    +generate_diagonal_clauses() list
+    +generate_all_cnf() list
+    +get_theoretical_clause_count() int
+  }
+
+  class BaseSolver {
+    <<abstract>>
+    +str name
+    +solve(n) SolverResult*
+  }
+
+  class SolverResult {
+    +bool is_solved
+    +list solution
+    +float execution_time
+    +int num_clauses
+    +int steps_taken
+    +int restarts
+  }
+
+  class Glucose3SATSolver {
+    +solve(n) SolverResult
+    -_decode_model(model, n) list
+  }
+
+  class MinConflictsSolver {
+    -VariableSelector heuristic
+    -int max_steps
+    -int max_restarts
+    +solve(n) SolverResult
+    -_initial_state(n) list
+    -_count_conflicts(state, col, row) int
+    -_get_conflicted_variables(state) tuple
+  }
+
+  class VariableSelector {
+    <<abstract / Strategy>>
+    +select_variable(conflicted_vars, conflict_counts)* int
+  }
+
+  class RandomSelector {
+    +select_variable(conflicted_vars, conflict_counts) int
+  }
+
+  class MaxConflictSelector {
+    +select_variable(conflicted_vars, conflict_counts) int
+  }
+
+  class HybridTabuSelector {
+    -float epsilon
+    -int tabu_size
+    +select_variable(conflicted_vars, conflict_counts) int
+  }
+
+  class BenchmarkRunner {
+    -list test_sizes
+    -int num_trials
+    +run_sat_experiments() void
+    +run_min_conflicts_experiments() void
+    +plot_comparisons(save_path) void
+    +export_to_table() str
+  }
+
+  ConstraintGenerator o-- NQueensProblem
+  BaseSolver <|-- Glucose3SATSolver
+  BaseSolver <|-- MinConflictsSolver
+  VariableSelector <|-- RandomSelector
+  VariableSelector <|-- MaxConflictSelector
+  VariableSelector <|-- HybridTabuSelector
+  MinConflictsSolver o-- VariableSelector
+  Glucose3SATSolver ..> ConstraintGenerator
+  BenchmarkRunner ..> BaseSolver

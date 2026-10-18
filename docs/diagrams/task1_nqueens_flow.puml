@@ -1,0 +1,88 @@
+@startuml Task1_NQueens_Flowchart
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+
+title Task 1: Quy trình Nguyên lý Hoạt động của Glucose3 SAT & Min-Conflicts
+
+|#E8F4F8|Glucose3 SAT Solver Flow|
+start
+:Khởi tạo NQueensProblem(N) với N >= 4;
+:ConstraintGenerator sinh mệnh đề CNF;
+
+fork
+    :Sinh mệnh đề Hàng;
+    :• ALO (At-least-one): Mỗi hàng có ít nhất 1 hậu;
+    :• AMO (At-most-one): Cặp ô (¬x_i ∨ ¬x_j);
+fork again
+    :Sinh mệnh đề Cột;
+    :• ALO: Mỗi cột có ít nhất 1 hậu;
+    :• AMO: Cặp ô (¬x_i ∨ ¬x_j);
+fork again
+    :Sinh mệnh đề Đường chéo chính (r - c = k);
+    :• AMO: Mỗi chéo tối đa 1 hậu;
+fork again
+    :Sinh mệnh đề Đường chéo phụ (r + c = k);
+    :• AMO: Mỗi chéo tối đa 1 hậu;
+end fork
+
+:Tổng hợp toàn bộ CNF clauses;
+:Nạp vào Glucose3(bootstrap_with=clauses);
+:Bắt đầu bấm giờ đo thời gian thực thi;
+if (Glucose3.solve() == True?) then (SAT)
+    :Lấy model chân trị (các literal > 0);
+    :Giải mã: ID biến -> Tọa độ (r, c);
+    :Khôi phục cấu hình bàn cờ N x N;
+    :Trả về SolverResult(is_solved=True);
+else (UNSAT)
+    :Báo vô nghiệm;
+    :Trả về SolverResult(is_solved=False);
+endif
+stop
+
+|#FFF3E0|Min-Conflicts Local Search Flow|
+start
+:Khởi tạo restarts = 0;
+while (restarts < max_restarts?) is (Tiếp tục)
+    :Khởi tạo cấu hình ban đầu: state[col] = row;
+    :Tính mảng đếm xung đột:
+     row_counts, diag1_counts, diag2_counts (O(1) lookup);
+    :Khởi tạo steps = 0;
+    
+    while (steps < max_steps?) is (Trong giới hạn)
+        if (Tổng xung đột == 0?) then (Đã giải xong)
+            :Trả về SolverResult(is_solved=True, steps, solution);
+            stop
+        endif
+        
+        :Lấy danh sách các cột đang bị xung đột (conflicted_vars);
+        
+        partition "Strategy Pattern: Heuristic Chọn Biến" {
+            if (Chiến lược Heuristic được chọn?) then (Max-Conflict [Đề xuất])
+                :Chọn cột có số xung đột lớn nhất;
+                :Nếu hòa -> chọn ngẫu nhiên giữa các ứng viên;
+            elseif (Hybrid-Tabu) then (Mở rộng)
+                :Chọn theo Max-Conflict với xác suất 1 - epsilon;
+                :Chọn ngẫu nhiên với xác suất epsilon (tránh Tabu);
+            else (Random [Baseline])
+                :Chọn ngẫu nhiên đều 1 cột bị xung đột;
+            endif
+        }
+        
+        :Tại cột được chọn, duyệt qua mọi hàng r = 0..N-1;
+        :Tìm hàng r* có số xung đột tối thiểu (Min-Conflict row);
+        :Nếu nhiều hàng hòa điểm tối thiểu -> chọn ngẫu nhiên;
+        :Di chuyển quân hậu tới r*: state[chosen_col] = r*;
+        :Cập nhật lại mảng đếm xung đột;
+        :steps = steps + 1;
+    endwhile (Hết max_steps)
+    
+    :Bị kẹt cực tiểu cục bộ (Local Minima);
+    :restarts = restarts + 1 (Random Restart);
+endwhile (Hết max_restarts)
+
+:Trả về SolverResult(is_solved=False, Thất bại);
+stop
+
+@enduml

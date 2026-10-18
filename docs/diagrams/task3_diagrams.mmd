@@ -1,0 +1,109 @@
+classDiagram
+  class Cell {
+    +int r
+    +int c
+    +tuple pos
+    +set domain
+    +int value
+    +is_assigned() bool
+    +assign(val) void
+    +unassign() void
+  }
+
+  class RunConstraint {
+    +str direction
+    +int target_sum
+    +list cells
+    +int length
+    +get_valid_combinations() list
+    +is_satisfied() bool
+    +is_partially_valid() bool
+  }
+
+  class KakuroCSP {
+    +int rows
+    +int cols
+    +dict variables
+    +list runs
+    +load_from_json(path) void
+    +validate_puzzle_integrity() bool
+    +is_solved() bool
+  }
+
+  class EventType {
+    <<enumeration>>
+    INITIAL_DOMAINS
+    ASSIGN
+    PRUNE
+    RESTORE
+    BACKTRACK
+    SOLVED
+    NO_SOLUTION
+  }
+
+  class SolverEvent {
+    +EventType event_type
+    +tuple cell_pos
+    +int value
+    +set pruned_domain
+    +str message
+  }
+
+  class SolverTracer {
+    <<Subject / Observer Pattern>>
+    +list events
+    +emit(event_type, ...) void
+    +clear() void
+  }
+
+  class ConstraintPropagator {
+    -SolverTracer tracer
+    +initial_filtering(csp) bool
+    +ac3(csp, queue) bool
+    +forward_check(csp, var, val) dict
+  }
+
+  class CSPHeuristics {
+    +select_unassigned_variable_mrv(csp)$ Cell
+    +order_domain_values_lcv(csp, var)$ list
+  }
+
+  class KakuroBacktrackingSolver {
+    -bool use_ac3
+    -bool use_mrv
+    -bool use_lcv
+    -SolverTracer tracer
+    +int nodes_explored
+    +int backtracks
+    +solve(csp) KakuroSolveResult
+    -_backtrack(csp) bool
+  }
+
+  class KakuroVisualizer {
+    <<Observer>>
+    -KakuroCSP csp
+    -SolverTracer tracer
+    +run() void
+    +draw_board() void
+    +step_forward() void
+    +step_backward() void
+  }
+
+  class KakuroEvaluator {
+    +verify_correctness(solution, csp) bool
+    +test_stability(num_runs) dict
+    +run_ablation_study() list
+  }
+
+  KakuroCSP *-- Cell
+  KakuroCSP *-- RunConstraint
+  RunConstraint o-- Cell
+  KakuroBacktrackingSolver o-- ConstraintPropagator
+  KakuroBacktrackingSolver ..> CSPHeuristics
+  KakuroBacktrackingSolver o-- SolverTracer
+  SolverTracer *-- SolverEvent
+  SolverEvent o-- EventType
+  KakuroVisualizer o-- SolverTracer
+  KakuroVisualizer o-- KakuroCSP
+  KakuroEvaluator ..> KakuroCSP
+  KakuroEvaluator ..> KakuroBacktrackingSolver

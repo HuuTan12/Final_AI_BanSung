@@ -1,0 +1,81 @@
+@startuml OverallArchitecture
+!theme plain
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title Kiến trúc Tổng thể Dự án Đồ án AI (503043 - TDTU)
+
+package "AI_final_project / source" {
+    
+    package "task1_nqueens (Local Search & SAT)" as T1 {
+        [task1.core] as T1_Core
+        [task1.solvers] as T1_Solvers
+        [task1.experiments] as T1_Exp
+        [nqueens.ipynb] as T1_NB
+        
+        T1_Core --> T1_Solvers : Cung cấp mô hình bài toán & CNF
+        T1_Solvers --> T1_Exp : Cung cấp bộ giải SAT & Min-Conflicts
+        T1_Exp --> T1_NB : Xuất biểu đồ & bảng kết quả
+    }
+
+    package "task2_tank (Adversarial Search)" as T2 {
+        [task2.engine] as T2_Engine
+        [task2.agents] as T2_Agents
+        [task2.agent_loader] as T2_Loader
+        [task2.ui (PyGame)] as T2_UI
+        [task2.experiments] as T2_Exp
+        [main.py] as T2_Main
+        
+        T2_Engine --> T2_Agents : Truyền GameState & Legal Actions
+        T2_Agents --> T2_Engine : Trả về Action (6 hành động)
+        T2_Loader --> T2_Agents : Nạp động Agent từ nhóm khác
+        T2_Engine --> T2_UI : Render bàn cờ & đạn va chạm
+        T2_Agents --> T2_UI : Hiển thị Search Metrics
+        T2_Main --> T2_Engine : Điều phối game loop
+        T2_Agents --> T2_Exp : Thi đấu vòng tròn 4 cấu hình
+    }
+
+    package "task3_kakuro (Constraint Satisfaction Problems)" as T3 {
+        [task3.csp] as T3_CSP
+        [task3.solver] as T3_Solver
+        [task3.puzzles] as T3_Puzzles
+        [task3.ui] as T3_UI
+        [task3.experiments] as T3_Exp
+        [kakuro.ipynb] as T3_NB
+        
+        T3_Puzzles --> T3_CSP : Nạp cấu hình bảng 5x5 & 9x9 (JSON)
+        T3_CSP --> T3_Solver : Cung cấp Biến & Ràng buộc Run
+        T3_Solver --> T3_UI : Phát sự kiện qua Tracer (Observer Pattern)
+        T3_Solver --> T3_Exp : Đo Correctness, Stability, Effectiveness
+        T3_Exp --> T3_NB : Hiển thị bảng số liệu & nghiệm
+    }
+
+    [requirements.txt] as REQ
+    [README.md] as README
+}
+
+package "docs (Báo cáo & Phỏng vấn)" {
+    [report_structure_guide.md]
+    [interview_prep_questions.md]
+    [architecture_and_design_diagrams.md]
+    [report.pdf]
+}
+
+[demo.txt] as DEMO
+
+note right of T2_Loader
+  Thực hiện yêu cầu 3 (Task 2):
+  Cơ chế cắm thuật toán của nhóm khác
+  vào thi đấu đối kháng độc lập.
+end note
+
+note right of T3_Solver
+  Thực hiện yêu cầu 3 (Task 3):
+  Tách biệt Solver và UI qua SolverTracer,
+  trực quan hóa Domain, AC-3, Backtracking.
+end note
+
+@enduml

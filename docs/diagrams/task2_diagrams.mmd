@@ -1,0 +1,146 @@
+classDiagram
+  class Direction {
+    <<enumeration>>
+    UP
+    DOWN
+    LEFT
+    RIGHT
+  }
+
+  class Action {
+    <<enumeration>>
+    MOVE_UP
+    MOVE_DOWN
+    MOVE_LEFT
+    MOVE_RIGHT
+    FIRE
+    STAY
+    +get_move_direction(action)$ Direction
+  }
+
+  class GameEntity {
+    <<abstract>>
+    +int x
+    +int y
+    +int hp
+    +is_alive() bool
+    +take_damage(damage) void
+  }
+
+  class Tank {
+    +int INITIAL_HP = 6
+    +int player_id
+    +Direction direction
+    +clone() Tank
+  }
+
+  class Base {
+    +int INITIAL_HP = 9
+    +int player_id
+    +clone() Base
+  }
+
+  class Wall {
+    +int INITIAL_HP = 3
+    +clone() Wall
+  }
+
+  class Bullet {
+    +int SPEED = 3
+    +int x
+    +int y
+    +Direction direction
+    +int owner_id
+    +bool is_active
+    +clone() Bullet
+  }
+
+  class GameState {
+    +int width
+    +int height
+    +dict tanks
+    +dict bases
+    +dict walls
+    +list bullets
+    +int current_player
+    +int game_cycle
+    +clone() GameState
+    +get_legal_actions(player_id) list
+    +is_terminal() bool
+    +get_winner() int
+    +get_utility(player_id) float
+  }
+
+  class GameRules {
+    +apply_action(state, action)$ GameState
+    +step_bullets(state)$ void
+    -_move_tank(state, player_id, direction)$ void
+    -_fire_bullet(state, player_id)$ void
+  }
+
+  class BaseAgent {
+    <<abstract>>
+    +str name
+    +SearchStats stats
+    +choose_action(state, player_id)* Action
+    +reset_stats() void
+  }
+
+  class TankEvaluator {
+    +evaluate(state, player_id) float
+  }
+
+  class MinimaxAgent {
+    -int depth
+    +choose_action(state, player_id) Action
+  }
+
+  class AlphaBetaAgent {
+    -int depth
+    +choose_action(state, player_id) Action
+  }
+
+  class HeuristicMinimaxAgent {
+    -int depth
+    -TankEvaluator evaluator
+    +choose_action(state, player_id) Action
+  }
+
+  class HeuristicAlphaBetaAgent {
+    -int depth
+    -TankEvaluator evaluator
+    +choose_action(state, player_id) Action
+  }
+
+  class RivalGroupAgent {
+    +choose_action(state, player_id) Action
+  }
+
+  class AgentLoader {
+    +load_agent_from_file(file_path)$ BaseAgent
+    +discover_external_agents(folder_path)$ list
+  }
+
+  class TankGameGUI {
+    +init_display(w, h) void
+    +render(state, p0, p1) void
+    +handle_events() bool
+  }
+
+  GameEntity <|-- Tank
+  GameEntity <|-- Base
+  GameEntity <|-- Wall
+  GameState *-- Tank
+  GameState *-- Base
+  GameState *-- Wall
+  GameState *-- Bullet
+  BaseAgent <|-- MinimaxAgent
+  BaseAgent <|-- AlphaBetaAgent
+  BaseAgent <|-- HeuristicMinimaxAgent
+  BaseAgent <|-- HeuristicAlphaBetaAgent
+  BaseAgent <|-- RivalGroupAgent
+  HeuristicMinimaxAgent o-- TankEvaluator
+  HeuristicAlphaBetaAgent o-- TankEvaluator
+  GameRules ..> GameState
+  AgentLoader ..> BaseAgent
+  TankGameGUI ..> GameState

@@ -1,0 +1,114 @@
+@startuml Task1_NQueens_ClassDiagram
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+
+title Task 1: N-Queens - Biểu đồ Lớp chi tiết (Class Diagram OOP)
+
+package "task1_nqueens.core" {
+    class NQueensProblem {
+        - n : int
+        + __init__(n: int)
+        + to_var(r: int, c: int) : int
+        + to_coords(var_id: int) : Tuple[int, int]
+        + is_valid_solution(queen_positions: List[int]) : bool
+        + display(queen_positions: List[int]) : void
+    }
+
+    class ConstraintGenerator {
+        - problem : NQueensProblem
+        - n : int
+        + __init__(problem: NQueensProblem)
+        + generate_row_clauses() : List[List[int]]
+        + generate_col_clauses() : List[List[int]]
+        + generate_diagonal_clauses() : List[List[int]]
+        + generate_all_cnf() : List[List[int]]
+        + get_theoretical_clause_count() : int
+    }
+}
+
+package "task1_nqueens.solvers" {
+    class SolverResult <<dataclass>> {
+        + is_solved : bool
+        + solution : Optional[List[int]]
+        + execution_time : float
+        + num_clauses : Optional[int]
+        + steps_taken : Optional[int]
+        + restarts : Optional[int]
+    }
+
+    abstract class BaseSolver {
+        + name : str
+        + __init__(name: str)
+        + {abstract} solve(n: int) : SolverResult
+    }
+
+    class Glucose3SATSolver {
+        + __init__()
+        + solve(n: int) : SolverResult
+        - _decode_model(model: List[int], n: int) : List[int]
+    }
+
+    class MinConflictsSolver {
+        - heuristic : VariableSelector
+        - max_steps : int
+        - max_restarts : int
+        + __init__(heuristic: VariableSelector, max_steps: int, max_restarts: int)
+        + solve(n: int) : SolverResult
+        - _initial_state(n: int) : List[int]
+        - _count_conflicts(state: List[int], col: int, row: int) : int
+        - _get_conflicted_variables(state: List[int]) : Tuple[List[int], List[int]]
+    }
+
+    abstract class VariableSelector <<Strategy>> {
+        + {abstract} select_variable(conflicted_vars: List[int], conflict_counts: List[int]) : int
+    }
+
+    class RandomSelector {
+        + select_variable(conflicted_vars: List[int], conflict_counts: List[int]) : int
+    }
+
+    class MaxConflictSelector {
+        + select_variable(conflicted_vars: List[int], conflict_counts: List[int]) : int
+    }
+
+    class HybridTabuSelector {
+        - epsilon : float
+        - tabu_size : int
+        - tabu_list : List[int]
+        + __init__(epsilon: float, tabu_size: int)
+        + select_variable(conflicted_vars: List[int], conflict_counts: List[int]) : int
+    }
+}
+
+package "task1_nqueens.experiments" {
+    class BenchmarkRunner {
+        - test_sizes : List[int]
+        - num_trials : int
+        - results : List[Dict[str, Any]]
+        + __init__(test_sizes: List[int], num_trials: int)
+        + run_sat_experiments() : void
+        + run_min_conflicts_experiments() : void
+        + plot_comparisons(save_path: str) : void
+        + export_to_table() : str
+    }
+}
+
+' Relationships
+ConstraintGenerator o-- NQueensProblem : "phân tích & sinh mệnh đề"
+BaseSolver <|-- Glucose3SATSolver : kế thừa
+BaseSolver <|-- MinConflictsSolver : kế thừa
+Glucose3SATSolver ..> ConstraintGenerator : sử dụng CNF
+Glucose3SATSolver ..> SolverResult : trả về
+MinConflictsSolver ..> SolverResult : trả về
+
+VariableSelector <|-- RandomSelector : cài đặt (Baseline)
+VariableSelector <|-- MaxConflictSelector : cài đặt (Đề xuất)
+VariableSelector <|-- HybridTabuSelector : cài đặt (Mở rộng)
+
+MinConflictsSolver o-- VariableSelector : "sử dụng Strategy"
+BenchmarkRunner ..> BaseSolver : "chạy thực nghiệm"
+
+@enduml

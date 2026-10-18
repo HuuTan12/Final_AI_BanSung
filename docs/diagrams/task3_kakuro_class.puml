@@ -1,0 +1,153 @@
+@startuml Task3_Kakuro_ClassDiagram
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+
+title Task 3: Kakuro Puzzle CSP - Biểu đồ Lớp chi tiết (Class Diagram OOP)
+
+package "task3_kakuro.csp" {
+    class Cell {
+        + r : int
+        + c : int
+        + pos : Tuple[int, int]
+        + domain : Set[int]
+        + value : Optional[int]
+        + __init__(r: int, c: int)
+        + is_assigned : bool
+        + assign(val: int) : void
+        + unassign() : void
+    }
+
+    class RunConstraint {
+        + direction : str
+        + target_sum : int
+        + cells : List[Cell]
+        + length : int
+        + __init__(direction: str, target_sum: int, cells: List[Cell])
+        + get_valid_combinations() : List[Tuple[int, ...]]
+        + is_satisfied() : bool
+        + is_partially_valid() : bool
+    }
+
+    class KakuroCSP {
+        + rows : int
+        + cols : int
+        + variables : Dict[Tuple[int, int], Cell]
+        + runs : List[RunConstraint]
+        + cell_runs : Dict[Cell, List[RunConstraint]]
+        + __init__(rows: int, cols: int)
+        + load_from_json(json_path: str) : void
+        + validate_puzzle_integrity() : bool
+        + is_solved() : bool
+    }
+}
+
+package "task3_kakuro.solver" {
+    enum EventType <<Enum>> {
+        INITIAL_DOMAINS
+        ASSIGN
+        PRUNE
+        RESTORE
+        BACKTRACK
+        SOLVED
+        NO_SOLUTION
+    }
+
+    class SolverEvent <<dataclass>> {
+        + event_type : EventType
+        + cell_pos : Optional[Tuple[int, int]]
+        + value : Optional[int]
+        + pruned_domain : Optional[Set[int]]
+        + message : str
+    }
+
+    class SolverTracer <<Subject (Observer Pattern)>> {
+        + events : List[SolverEvent]
+        + __init__()
+        + emit(event_type: EventType, ...) : void
+        + clear() : void
+    }
+
+    class ConstraintPropagator {
+        - tracer : Optional[SolverTracer]
+        + __init__(tracer: Optional[SolverTracer])
+        + initial_filtering(csp: KakuroCSP) : bool
+        + ac3(csp: KakuroCSP, queue: List) : bool
+        + forward_check(csp: KakuroCSP, var: Cell, val: int) : Dict[Cell, Set[int]]
+    }
+
+    class CSPHeuristics {
+        + {static} select_unassigned_variable_mrv(csp: KakuroCSP) : Cell
+        + {static} order_domain_values_lcv(csp: KakuroCSP, var: Cell) : List[int]
+    }
+
+    class KakuroSolveResult <<dataclass>> {
+        + is_solved : bool
+        + execution_time : float
+        + nodes_explored : int
+        + backtracks : int
+        + solution_grid : Optional[Dict[tuple, int]]
+    }
+
+    class KakuroBacktrackingSolver {
+        - use_ac3 : bool
+        - use_mrv : bool
+        - use_lcv : bool
+        - tracer : Optional[SolverTracer]
+        - propagator : ConstraintPropagator
+        + nodes_explored : int
+        + backtracks : int
+        + __init__(use_ac3: bool, use_mrv: bool, use_lcv: bool, tracer: SolverTracer)
+        + solve(csp: KakuroCSP) : KakuroSolveResult
+        - _backtrack(csp: KakuroCSP) : bool
+    }
+}
+
+package "task3_kakuro.ui" {
+    class KakuroVisualizer <<Observer>> {
+        - csp : KakuroCSP
+        - tracer : SolverTracer
+        - current_event_idx : int
+        - is_playing : bool
+        - playback_speed : float
+        + __init__(csp: KakuroCSP, tracer: SolverTracer)
+        + run() : void
+        + draw_board() : void
+        + step_forward() : void
+        + step_backward() : void
+    }
+}
+
+package "task3_kakuro.experiments" {
+    class KakuroEvaluator {
+        - puzzle_path : str
+        + __init__(puzzle_path: str)
+        + verify_correctness(solution: Dict, csp: KakuroCSP) : bool
+        + test_stability(num_runs: int) : Dict[str, Any]
+        + run_ablation_study() : List[Dict[str, Any]]
+    }
+}
+
+' Relationships
+KakuroCSP *-- "*" Cell : "quản lý các biến"
+KakuroCSP *-- "*" RunConstraint : "quản lý các ràng buộc Run"
+RunConstraint o-- "*" Cell : "chứa các ô liên tiếp"
+
+KakuroBacktrackingSolver o-- ConstraintPropagator : "sử dụng lan truyền"
+KakuroBacktrackingSolver ..> CSPHeuristics : "sử dụng MRV & LCV"
+KakuroBacktrackingSolver o-- SolverTracer : "phát sự kiện (Subject)"
+KakuroBacktrackingSolver ..> KakuroSolveResult : "trả về kết quả"
+ConstraintPropagator o-- SolverTracer : "ghi nhận biến bị tỉa (Prune)"
+
+SolverTracer *-- "*" SolverEvent : "danh sách vết sự kiện"
+SolverEvent o-- EventType
+
+KakuroVisualizer o-- SolverTracer : "đọc và phát lại sự kiện (Observer)"
+KakuroVisualizer o-- KakuroCSP : "vẽ trạng thái bảng cờ"
+
+KakuroEvaluator ..> KakuroCSP : "kiểm thử bảng 9x9"
+KakuroEvaluator ..> KakuroBacktrackingSolver : "chạy Ablation Study"
+
+@enduml

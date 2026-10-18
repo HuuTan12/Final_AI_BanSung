@@ -1,8 +1,3 @@
-# Cẩm nang Chuẩn bị Phỏng vấn Đồ án AI (TDTU Final Interview)
-> ⚠️ **Quy chế môn học:** "Students must take an interview to justify your work in the project. If you can not explain clearly and exactly ideas nor implementations, then you get 0.0 points for related tasks."
-
----
-
 ## 1. Task 1: N-Queens (SAT & Min-Conflicts)
 - **Câu hỏi 1:** *Tại sao số mệnh đề CNF cho hàng là $N + N \cdot \frac{N(N-1)}{2}$?*
   - **Trả lời:** Gồm 2 phần: (1) Ràng buộc có ít nhất 1 hậu (At-least-one): $x_{r,0} \lor \dots \lor x_{r,N-1}$ cho mỗi hàng $\rightarrow N$ mệnh đề. (2) Ràng buộc có nhiều nhất 1 hậu (At-most-one): Cứ mỗi cặp ô trên cùng một hàng $(\neg x_{r,i} \lor \neg x_{r,j})$ với $i < j \rightarrow \binom{N}{2} = \frac{N(N-1)}{2}$ cặp/hàng $\rightarrow N \cdot \binom{N}{2}$ mệnh đề.

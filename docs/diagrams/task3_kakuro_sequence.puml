@@ -1,0 +1,77 @@
+@startuml Task3_Kakuro_Sequence
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+autonumber
+
+title Task 3: Mô hình Observer Pattern giữa Solver, Tracer và Giao diện UI
+
+participant "KakuroEvaluator / Main" as Client
+participant "KakuroCSP" as CSP
+participant "SolverTracer\n(Subject)" as Tracer
+participant "KakuroBacktrackingSolver" as Solver
+participant "ConstraintPropagator\n(AC-3 / FC)" as Prop
+participant "KakuroVisualizer\n(Observer / UI)" as UI
+
+Client -> CSP: load_from_json("complex_9x9.json")
+Client -> CSP: validate_puzzle_integrity() (Tổng ngang == Tổng dọc)
+Client -> Tracer: new SolverTracer()
+Client -> Solver: new Solver(tracer=Tracer)
+Client -> UI: new KakuroVisualizer(csp=CSP, tracer=Tracer)
+
+Client -> Solver: solve(csp)
+activate Solver
+
+== Giai đoạn 1: Lan truyền ràng buộc ban đầu ==
+Solver -> Prop: initial_filtering(csp) & ac3(csp)
+activate Prop
+Prop -> Tracer: emit(PRUNE, cell=(1,2), pruned={6,7,8,9}, "Loại trừ do clue")
+Prop --> Solver: True (Không có domain wipeout)
+deactivate Prop
+
+== Giai đoạn 2: Tìm kiếm quay lui (Backtracking Search) ==
+loop Đến khi tìm thấy nghiệm hoặc vét cạn
+    Solver -> Solver: select_variable_mrv() (Chọn ô domain nhỏ nhất)
+    Solver -> Solver: order_domain_values_lcv() (Sắp xếp giá trị)
+    
+    Solver -> CSP: cell.assign(val)
+    Solver -> Tracer: emit(ASSIGN, cell=(r,c), val=val, "Gán giá trị thử nghiệm")
+    
+    Solver -> Prop: forward_check(csp, cell, val) / ac3()
+    activate Prop
+    alt Phát hiện miền giá trị rỗng (Domain Wipeout)
+        Prop --> Solver: False (Mâu thuẫn ràng buộc)
+        deactivate Prop
+        Solver -> CSP: cell.unassign() (Hoàn tác)
+        Solver -> Tracer: emit(BACKTRACK, cell=(r,c), "Quay lui do bế tắc")
+    else Miền giá trị hợp lệ
+        Prop --> Solver: True
+        deactivate Prop
+        Solver -> Solver: _backtrack(csp) [Đệ quy tầng kế tiếp]
+    end
+end
+
+Solver -> Tracer: emit(SOLVED, "Đã tìm thấy nghiệm hợp lệ 9x9")
+Solver --> Client: KakuroSolveResult(is_solved=True)
+deactivate Solver
+
+== Giai đoạn 3: UI Phát lại Trực quan hóa ==
+Client -> UI: run()
+activate UI
+loop Duyệt qua từng sự kiện trong tracer.events (Play / Step)
+    UI -> Tracer: get_event(current_idx)
+    Tracer --> UI: SolverEvent
+    alt event_type == PRUNE
+        UI -> UI: Gạch đỏ / làm mờ số bị tỉa trong lưới bút chì 3x3
+    else event_type == ASSIGN
+        UI -> UI: Tô vàng ô đang gán và hiện số lớn
+    else event_type == BACKTRACK
+        UI -> UI: Tô cam nhấp nháy ô đang quay lui & xóa giá trị
+    else event_type == SOLVED
+        UI -> UI: Đổi toàn bộ ô sang màu xanh lá (Success)
+    end
+end
+deactivate UI
+
+@enduml

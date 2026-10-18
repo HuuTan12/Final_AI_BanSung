@@ -1,0 +1,85 @@
+@startuml Task3_Kakuro_Flowchart
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+
+title Task 3: Quy trình Giải CSP Kakuro (Backtracking + AC-3 + Heuristics MRV/LCV)
+
+start
+:Đọc bảng cờ Kakuro (JSON 5x5 hoặc 9x9);
+:Khởi tạo các biến Cell với Domain = {1, 2, ..., 9};
+:Khởi tạo các ràng buộc Run (Ngang & Dọc);
+
+if (Tổng Clue Ngang == Tổng Clue Dọc?) then (Hợp lệ)
+    :Đề bài nhất quán;
+else (Sai lệch)
+    :Báo lỗi sai đề (Puzzle Clue Inconsistency);
+    stop
+endif
+
+partition "Tiền Xử Lý & Lan Truyền Ràng Buộc Ban Đầu" {
+    :Sinh trước các tổ hợp phân biệt (Valid Combinations)
+     cho từng Run: length ô, tổng = clue;
+    :Giao miền giá trị của Run ngang và Run dọc tại mỗi ô;
+    :Chạy thuật toán AC-3 ban đầu trên toàn bộ mạng ràng buộc;
+    if (Tồn tại ô có Domain rỗng?) then (Có)
+        :Kết luận bài toán vô nghiệm ngay từ đầu;
+        stop
+    else (Không)
+        :Miền giá trị được thu hẹp đáng kể;
+    endif
+}
+
+partition "Thuật Toán Tìm Kiếm Quay Lui (Backtracking Search)" {
+    while (Tất cả các biến đã được gán giá trị?) is (Chưa xong)
+        :Chọn biến chưa gán theo **Heuristic MRV**
+         (Biến có kích thước Domain nhỏ nhất);
+        :Nếu hòa -> dùng **Degree Heuristic** làm tie-break
+         (Ô nằm trong Run ngắn hơn);
+         
+        :Sắp xếp các giá trị trong Domain theo **Heuristic LCV**
+         (Giá trị ít loại bỏ ứng viên của các ô láng giềng nhất);
+         
+        while (Còn giá trị khả dĩ v trong LCV domain?) is (Còn thử)
+            :Gán giá trị: cell.assign(v);
+            :Lưu snapshot trạng thái Domain hiện tại;
+            :Ghi sự kiện ASSIGN vào SolverTracer;
+            
+            partition "Lan Truyền Ràng Buộc Cục Bộ (MAC / FC)" {
+                :Tỉa các giá trị không hợp lệ trong cùng Run;
+                :Ghi sự kiện PRUNE vào SolverTracer;
+                if (Có ô láng giềng nào bị rỗng Domain?) then (Domain Wipeout - Thất bại)
+                    :Khôi phục lại snapshot Domain (Undo Pruning);
+                    :cell.unassign();
+                    :Ghi sự kiện BACKTRACK vào SolverTracer;
+                    :Tăng bộ đếm backtracks;
+                    note right
+                      Phát hiện nhánh chết sớm (Fail early)
+                      nhờ AC-3 / Forward Checking!
+                    end note
+                else (Thành công)
+                    :Đệ quy gọi Backtrack cho ô tiếp theo;
+                    if (Nhánh con tìm thấy nghiệm?) then (Có)
+                        :Trả về True (Tìm thấy nghiệm toàn cục);
+                        stop
+                    else (Không)
+                        :Khôi phục snapshot Domain;
+                        :cell.unassign();
+                        :Ghi sự kiện BACKTRACK vào SolverTracer;
+                    endif
+                endif
+            }
+        endwhile (Hết giá trị thử)
+        :Trả về False (Quay lui lên tầng đệ quy trước);
+        stop
+    endwhile (Đã gán hết)
+}
+
+:Xác minh nghiệm độc lập qua Verify Correctness
+(Mọi Run có tổng bằng Clue & AllDifferent);
+:Ghi sự kiện SOLVED vào SolverTracer;
+:Hiển thị kết quả & phát lại trên UI;
+stop
+
+@enduml

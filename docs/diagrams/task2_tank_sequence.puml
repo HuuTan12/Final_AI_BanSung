@@ -1,0 +1,83 @@
+@startuml Task2_Tank_Sequence
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+autonumber
+
+title Task 2: Quy trình Thực thi Một Chu kỳ Trò chơi (Game Cycle Sequence Diagram)
+
+participant "main / GameLoop" as Loop
+participant "TankGameGUI\n(PyGame)" as GUI
+participant "GameState" as State
+participant "BaseAgent (P0)\n[Max Node]" as P0
+participant "BaseAgent (P1)\n[Min Node]" as P1
+participant "GameRules" as Rules
+participant "Bullet / Entity" as Entity
+
+loop Mỗi Game Cycle (cho đến khi Terminal hoặc Max Cycles)
+    Loop -> GUI: handle_events() (Pause, Step, Speed)
+    GUI --> Loop: user_command
+    
+    == Lượt Đi Của Player 0 (MAX) ==
+    Loop -> State: get_legal_actions(player_id=0)
+    State --> Loop: legal_actions_p0
+    Loop -> P0: choose_action(state.clone(), player_id=0)
+    activate P0
+    note over P0: Tìm kiếm cây đối kháng\n(Minimax / Alpha-Beta / Heuristic)\nĐo thời gian & đếm số explored nodes
+    P0 --> Loop: action_p0
+    deactivate P0
+    Loop -> Rules: apply_action(state, action_p0)
+    Rules -> State: Cập nhật vị trí/hướng Tank P0 hoặc tạo Bullet mới
+    
+    == Lượt Đi Của Player 1 (MIN) ==
+    Loop -> State: get_legal_actions(player_id=1)
+    State --> Loop: legal_actions_p1
+    Loop -> P1: choose_action(state.clone(), player_id=1)
+    activate P1
+    note over P1: Tìm kiếm cây đối kháng của P1
+    P1 --> Loop: action_p1
+    deactivate P1
+    Loop -> Rules: apply_action(state, action_p1)
+    Rules -> State: Cập nhật vị trí/hướng Tank P1 hoặc tạo Bullet mới
+    
+    == Xử Lý Đạn Bay: Tối đa 3 Ô, Kiểm Tra Va Chạm Từng Ô (Cell-by-cell) ==
+    Loop -> Rules: step_bullets(state)
+    activate Rules
+    loop Bước di chuyển k = 1, 2, 3
+        Rules -> Entity: bullet.x += dir.x, bullet.y += dir.y (Di chuyển 1 ô)
+        Rules -> State: check_collision(bullet.x, bullet.y)
+        alt Đạn trúng Tường (Wall)
+            Rules -> Entity: wall.take_damage(1)
+            opt wall.hp == 0
+                Rules -> State: Xóa Wall khỏi lưới (ô trở thành trống)
+            end
+            Rules -> Entity: bullet.is_active = False (Đạn dừng & biến mất ngay)
+        else Đạn trúng Xe tăng (Tank)
+            Rules -> Entity: tank.take_damage(1)
+            Rules -> Entity: bullet.is_active = False (Đạn dừng ngay)
+        else Đạn trúng Căn cứ (Base)
+            Rules -> Entity: base.take_damage(1)
+            Rules -> Entity: bullet.is_active = False (Đạn dừng ngay)
+        else Đạn bay ra khỏi biên bản đồ
+            Rules -> Entity: bullet.is_active = False
+        end
+        Rules -> State: Xóa các bullet có is_active == False
+    end
+    deactivate Rules
+    
+    == Kiểm Tra Điều Kiện Kết Thúc & Cập Nhật Giao Diện ==
+    Loop -> State: is_terminal()
+    alt Terminal == True (Tank hoặc Base HP <= 0)
+        State --> Loop: True (Game Over)
+        Loop -> State: get_winner() & get_utility()
+        State --> Loop: winner_id, utility_score
+        Loop -> GUI: render_game_over(winner_id)
+    else Terminal == False
+        State --> Loop: False (Tiếp tục)
+        Loop -> GUI: render(state, agent_p0, agent_p1)
+        note over GUI: Vẽ lại bàn cờ, thanh HP,\nđường đạn và Search Metrics
+    end
+end
+
+@enduml
