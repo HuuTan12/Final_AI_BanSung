@@ -65,7 +65,7 @@ class ConstraintGenerator:
         return clauses
 
     def generate_diagonal_clauses(self) -> List[List[int]]:
-        """
+        r"""
         Generates diagonal constraints: each diagonal has at most one queen.
         - Main diagonals (\): r - c = k for -(N - 1) <= k <= N - 1
         - Anti diagonals (/): r + c = k for 0 <= k <= 2 * N - 2

@@ -8,7 +8,8 @@ Description:
     and displays the chessboard in ASCII format.
 """
 
-from typing import List, Tuple, Optional
+import os
+from typing import List, Tuple, Optional, Any
 
 
 class NQueensProblem:
@@ -102,3 +103,83 @@ class NQueensProblem:
         print("       " + "---" * self.n)
         print(" Col   " + "".join([f"{c:3d}" for c in range(self.n)]))
         print()
+
+    def plot_board(
+        self,
+        queen_positions: List[int],
+        title: Optional[str] = None,
+        save_path: Optional[str] = None,
+        show: bool = False
+    ) -> Optional[Any]:
+        """
+        Renders a publication-ready matplotlib graphical visualization of the N-Queens chessboard.
+        Draws alternating wood/cream square colors, coordinates, and high-visibility Queen symbols (♛).
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+
+        if queen_positions is None or len(queen_positions) != self.n:
+            print("No valid board to display.")
+            return None
+
+        fig_size = max(4.0, min(self.n * 0.6, 9.0))
+        fig, ax = plt.subplots(figsize=(fig_size, fig_size))
+
+        # Color scheme for chessboard squares
+        color_light = "#F0D9B5"
+        color_dark = "#B58863"
+        queen_color = "#1A1A2E"
+        font_size = max(9, int(180 / self.n))
+
+        for r in range(self.n):
+            for c in range(self.n):
+                square_color = color_light if (r + c) % 2 == 0 else color_dark
+                rect = patches.Rectangle(
+                    (c, self.n - 1 - r), 1, 1,
+                    facecolor=square_color,
+                    edgecolor="#4A3728",
+                    linewidth=0.5
+                )
+                ax.add_patch(rect)
+
+        # Draw queen symbols
+        for c in range(self.n):
+            r = queen_positions[c]
+            if 0 <= r < self.n:
+                ax.text(
+                    c + 0.5,
+                    self.n - 1 - r + 0.5,
+                    "♛",
+                    fontsize=font_size,
+                    ha="center",
+                    va="center",
+                    color=queen_color,
+                    fontweight="bold"
+                )
+
+        ax.set_xlim(0, self.n)
+        ax.set_ylim(0, self.n)
+        ax.set_aspect("equal")
+
+        # Board axis labels
+        ax.set_xticks([c + 0.5 for c in range(self.n)])
+        ax.set_xticklabels([str(c) for c in range(self.n)], fontsize=max(7, min(11, int(90 / self.n))))
+        ax.set_yticks([self.n - 1 - r + 0.5 for r in range(self.n)])
+        ax.set_yticklabels([str(r) for r in range(self.n)], fontsize=max(7, min(11, int(90 / self.n))))
+
+        ax.set_xlabel("Column (Variable)", fontsize=10, fontweight="bold", labelpad=6)
+        ax.set_ylabel("Row (Assigned Value)", fontsize=10, fontweight="bold", labelpad=6)
+
+        board_title = title if title is not None else f"N-Queens Solution (N = {self.n})"
+        ax.set_title(board_title, fontsize=11, fontweight="bold", pad=10)
+
+        plt.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"[Visual] Chessboard plot saved to: {os.path.abspath(save_path)}")
+
+        if show:
+            plt.show()
+
+        return fig

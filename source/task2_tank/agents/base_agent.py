@@ -1,27 +1,45 @@
 """
-Module: base_agent.py
-Mô tả: Lớp cơ sở trừu tượng cho tất cả các AI Agent điều khiển Tank.
-Đóng vai trò là Interface chuẩn chung để các nhóm sinh viên khác có thể nạp thuật toán vào thi đấu.
+base_agent.py - Standard Agent Interface and Performance Statistics
+Course: Introduction to Artificial Intelligence (503043)
+Author: Student Group
+Description:
+    Defines the abstract base class BaseAgent and SearchStats dataclass.
+    Acts as the standard public interface for all tank algorithms,
+    including internal search algorithms and external agents from other groups.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Dict, Any
+
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.actions import Action
 
 
 @dataclass
 class SearchStats:
-    """Thống kê hiệu năng tìm kiếm của Agent trong mỗi lượt đi."""
+    """
+    Search performance metrics recorded per decision move.
+    """
     explored_nodes: int = 0
     prune_count: int = 0
     search_depth: int = 0
     execution_time: float = 0.0
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "explored_nodes": self.explored_nodes,
+            "prune_count": self.prune_count,
+            "search_depth": self.search_depth,
+            "execution_time": round(self.execution_time, 6),
+        }
+
 
 class BaseAgent(ABC):
     """
-    Interface Agent chuẩn bắt buộc cho mọi thuật toán điều khiển Tank.
+    Abstract Base Class for all tank-controlling AI agents.
+    Every agent (Minimax, AlphaBeta, Heuristic, or Rival group agent)
+    must inherit from this class and implement choose_action.
     """
 
     def __init__(self, name: str):
@@ -31,11 +49,11 @@ class BaseAgent(ABC):
     @abstractmethod
     def choose_action(self, state: GameState, player_id: int) -> Action:
         """
-        Giao diện cốt lõi: Nhận trạng thái GameState và ID người chơi (0 hoặc 1),
-        trả về 1 trong 6 hành động Action hợp lệ.
+        Core decision method: Receives current GameState and player_id (0 or 1),
+        returns one of the 6 legal Action enums.
         """
         pass
 
     def reset_stats(self) -> None:
-        """Đặt lại bộ đếm thống kê trước mỗi lượt suy luận."""
+        """Resets search metrics before planning a new move."""
         self.stats = SearchStats()

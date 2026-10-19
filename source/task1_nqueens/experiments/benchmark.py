@@ -203,6 +203,69 @@ class BenchmarkRunner:
         print(f"\n[Visual] Benchmark comparison plot saved to: {os.path.abspath(save_path)}")
         return os.path.abspath(save_path)
 
+    def plot_cnf_breakdown(
+        self,
+        save_path: str = "cnf_breakdown_task1.png",
+        n_values: Optional[List[int]] = None
+    ) -> str:
+        """
+        Visualizes CNF clause count breakdown by constraint group
+        (Row ALO, Row AMO, Col ALO, Col AMO, Diagonal AMO) as a grouped bar chart.
+        """
+        # Allow passing n_values as first argument if a list is provided
+        if isinstance(save_path, list):
+            n_values, save_path = save_path, "cnf_breakdown_task1.png"
+
+        if n_values is None:
+            n_values = [4, 6, 8, 12, 16, 20]
+
+        stats_list = [
+            ConstraintGenerator(NQueensProblem(n)).get_clause_statistics()
+            for n in n_values
+        ]
+
+        categories = [
+            ("Row ALO (>=1)", "row_alo", "#2ecc71"),
+            ("Row AMO (<=1)", "row_amo", "#3498db"),
+            ("Col ALO (>=1)", "col_alo", "#9b59b6"),
+            ("Col AMO (<=1)", "col_amo", "#f39c12"),
+            ("Diagonal AMO (<=1)", "diagonal_amo", "#e74c3c"),
+        ]
+
+        import numpy as np
+        x = np.arange(len(n_values))
+        bar_width = 0.16
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        for idx, (label, key, color) in enumerate(categories):
+            counts = [s[key] for s in stats_list]
+            ax.bar(
+                x + idx * bar_width,
+                counts,
+                bar_width,
+                label=label,
+                color=color,
+                alpha=0.9,
+                edgecolor="black",
+                linewidth=0.5
+            )
+
+        ax.set_title("CNF Clause Count Breakdown by Constraint Category ($O(N^3)$)", fontsize=13, fontweight="bold", pad=12)
+        ax.set_xlabel("Board Size N", fontsize=11, fontweight="bold")
+        ax.set_ylabel("Clause Count (log scale)", fontsize=11, fontweight="bold")
+        ax.set_yscale("log")
+        ax.set_xticks(x + bar_width * 2)
+        ax.set_xticklabels([f"N={n}" for n in n_values], fontsize=10, fontweight="bold")
+        ax.grid(True, linestyle="--", alpha=0.5, axis="y")
+        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=9)
+
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+        print(f"\n[Visual] CNF clause breakdown bar chart saved to: {os.path.abspath(save_path)}")
+        return os.path.abspath(save_path)
+
     def export_to_table(self) -> str:
         """
         Exports experimental results as GitHub/IEEE formatted Markdown tables.
@@ -224,8 +287,10 @@ class BenchmarkRunner:
 
 
 if __name__ == "__main__":
-    runner = BenchmarkRunner(sat_sizes=[4, 8, 12, 16, 20], mc_sizes=[8, 16, 32, 64], num_trials=3)
+    runner = BenchmarkRunner(sat_sizes=[4, 8, 12, 16, 20], mc_sizes=[8, 16, 32, 64], num_trials=5)
     runner.run_sat_experiments()
     runner.run_min_conflicts_experiments()
     runner.plot_comparisons("benchmark_task1.png")
+    runner.plot_cnf_breakdown(save_path="cnf_breakdown_task1.png")
     print("\n" + runner.export_to_table())
+
