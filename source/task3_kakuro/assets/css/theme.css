@@ -1,0 +1,18 @@
+/* Kakuro theme tokens. Defaults = colours measured from the PDF. */
+:root,[data-theme="classic"]{
+  --kk-cell-bg:#FFFFFF;      /* ô trống */
+  --kk-cell-hi:#E6E6E6;      /* ô tô xám (highlight) */
+  --kk-grid:#7F7F7F;         /* đường lưới trong (0.5pt) */
+  --kk-clue-bg:#EEEEEE;      /* nền tam giác gợi ý */
+  --kk-border:#777777;       /* viền tam giác (1pt) */
+  --kk-clue:#444444;         /* số gợi ý */
+  --kk-hand:#777777;         /* số người chơi điền */
+  --kk-lbl:#505028;          /* nhãn A-F / 1-6 */
+  --kk-ring:#000000;         /* vòng tròn đánh dấu */
+  --kk-page:#FFFFFF;
+}
+[data-theme="midnight"]{--kk-cell-bg:#1E2433;--kk-cell-hi:#2C3550;--kk-grid:#3B4560;--kk-clue-bg:#11151F;--kk-border:#55618A;--kk-clue:#9FB4FF;--kk-hand:#FFD479;--kk-lbl:#7F8DB8;--kk-ring:#FF6B8A;--kk-page:#0B0E15}
+[data-theme="mint"]{--kk-cell-bg:#FBFFFC;--kk-cell-hi:#CDEFD9;--kk-grid:#8CC5A2;--kk-clue-bg:#2F7D5B;--kk-border:#1F5A41;--kk-clue:#FFFFFF;--kk-hand:#1F5A41;--kk-lbl:#2F7D5B;--kk-ring:#E4572E;--kk-page:#F1FAF4}
+[data-theme="sunset"]{--kk-cell-bg:#FFF8EF;--kk-cell-hi:#FFD9B8;--kk-grid:#D9A77B;--kk-clue-bg:#C8553D;--kk-border:#8F3A29;--kk-clue:#FFF1E6;--kk-hand:#7A2E1D;--kk-lbl:#8F3A29;--kk-ring:#2B2D42;--kk-page:#FFEFD9}
+.kk-hand{color:var(--kk-hand)} .kk-clue{color:var(--kk-clue)} .kk-lbl{color:var(--kk-lbl)}
+@font-face{font-family:"Iowan Old Style Subset";src:url("../fonts/IowanOldStyle-Roman-subset.ttf")}
