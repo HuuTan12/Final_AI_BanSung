@@ -38,38 +38,99 @@ source/task1_nqueens/
 │   ├── base_solver.py       # BaseSolver (abstract interface) and SolverResult dataclass
 │   ├── sat_solver.py        # Glucose3SATSolver: integrates Glucose3 from PySAT
 │   ├── heuristics.py        # VariableSelector: RandomSelector, MaxConflictSelector, HybridTabuSelector
-│   └── min_conflicts.py     # MinConflictsSolver: optimized local search with O(1) frequency tables
+│   ├── min_conflicts.py     # MinConflictsSolver: optimized local search with O(1) frequency tables
+│   ├── step_min_conflicts.py# StepMinConflictsGenerator: step-by-step animation generator
+│   └── backtracking_solver.py # BacktrackingSolver: step-by-step DFS, all-solutions counting (OEIS A000170)
+├── ui/
+│   ├── pygame_nqueens.py    # High-Fidelity Interactive Chessboard GUI with live telemetry and laser beams
+│   └── notebook_visualizer.py # Matplotlib chessboard and solution gallery for Jupyter Notebooks
 ├── experiments/
 │   └── benchmark.py         # BenchmarkRunner: automated benchmarking, plotting, and markdown tables
+├── main.py                  # CLI & GUI entry point
 ├── nqueens.ipynb            # Jupyter Notebook with all outputs fully preserved
 └── README.md                # Documentation and running guide
 ```
 
 ---
 
-## 3. How to Run
+## 3. High-Fidelity Interactive GUI & Visualizer (UI/UX)
 
-### A. Run Jupyter Notebook
-Open `nqueens.ipynb` in VS Code or Jupyter Notebook:
-```bash
-jupyter notebook nqueens.ipynb
-```
-All cells have been pre-executed with outputs preserved as required by submission guidelines.
+The project includes an interactive graphical interface (`pygame_nqueens.py`) designed with a modern **Dark Tactical Cyber** aesthetic:
 
-### B. Run Benchmark Script from Terminal
-From the `source/` directory:
-```bash
-python -m task1_nqueens.experiments.benchmark
-```
-This script will:
-1. Benchmark Glucose3 across $N \ge 4$.
-2. Run comparative trials between Standard Min-Conflicts and Proposed Heuristics.
-3. Automatically generate the comparison plot `benchmark_task1.png`.
-4. Output Markdown summary tables.
+### A. Key Visual & Interactive Features
+1. **Interactive Chessboard Rendering:**
+   - Supports dynamic board sizes $N \in [4, 16]$ with crisp scalable vector royal crowns (♛).
+   - Alternating cream/slate tiles, coordinate axes ($A..H, 1..8$ or $0..N-1$).
+   - **Glowing Red Laser Beams:** Highlights attacking pairs of queens in real time with laser effect.
+   - **Candidate Row Overlays:** During search, shows conflict numbers on each row of the selected column and safe green squares.
+
+2. **Step-by-step Queen Placement & Solvers:**
+   - **Backtracking Search:** Watches the AI place queens column by column, tests safe squares, flashes red on conflicts, and visually backtracks (lifts queen) on dead ends.
+   - **Min-Conflicts Local Search:** Visualizes variable selection (via Random, Max-Conflict, or Hybrid-Tabu), row conflict evaluations, moves, and random restarts on plateaux.
+   - **Glucose3 PySAT Solver:** Visualizes satisfying model decoding and step-placement.
+   - **All Solutions Browser:** Instantly navigates through all valid solutions (e.g., 92 solutions for $N=8$, 2 for $N=4$, 10 for $N=5$, 4 for $N=6$, 40 for $N=7$, 352 for $N=9$).
+   - **Interactive Manual Sandbox:** Click any square to place, move, or remove queens by hand, with live conflict count and attack lines!
+
+3. **Telemetry & Live Metrics Panel:**
+   - **Trường hợp đã xét / duyệt (Cases Explored):** Real-time dynamic counter of candidate positions tested.
+   - **Số nghiệm hợp lệ (Solutions Found):** Dynamic solution count with reference total (e.g., `92/92`).
+   - **Số xung đột hiện tại (Current Conflicts):** Counts attacking pairs ($0$ = Solved!).
+   - **Số bước & Lần quay lui / khởi động lại (Steps & Backtracks/Restarts).**
+   - **Mô hình Mệnh đề Logic CNF:** Number of variables ($N^2$), ALO/AMO clauses, theoretical formula match check ($2N + N^2(N-1) + \frac{N(N-1)(2N-1)}{3}$).
+   - **Thời gian thực thi (Latency in ms).**
+
+### B. Controls & Keyboard Shortcuts
+| Control | Shortcut | Description |
+|:---|:---:|:---|
+| **Play / Pause** | `SPACE` | Tự động chạy / tạm dừng hoạt ảnh đặt hậu từng bước |
+| **Tiến 1 bước (+1)** | `RIGHT` / `S` | Thực thi đúng 1 bước tìm kiếm kế tiếp |
+| **Lùi 1 bước (-1)** | `LEFT` / `A` | Hoàn tác lại bước trước đó (Step History Undo) |
+| **Reset** | `R` | Đặt lại bàn cờ và khởi động lại giải thuật |
+| **Tốc độ (Speed)** | `1` .. `5` | 1x, 2x, 5x, 10x, hoặc ⚡ Max (Tức thì) |
+| **Chọn N** | Click `[-]` / `[+]` | Thay đổi kích thước bàn cờ $N = 4, 6, 8, 10, 12, 16$ |
+| **Duyệt nghiệm** | Click `◀ / ▶` | Xem qua các nghiệm hợp lệ khác nhau |
+| **Đặt hậu bằng tay** | Chuột trái | Click vào ô cờ bất kỳ để đặt/gỡ quân hậu |
 
 ---
 
-## 4. Summary of Experimental Results
+## 4. How to Run
+
+### A. Run Interactive Pygame GUI
+From the project root:
+```bash
+python source/task1_nqueens/main.py
+```
+Or with custom arguments:
+```bash
+# Chạy bàn cờ 8x8 với thuật toán Backtracking
+python source/task1_nqueens/main.py --n 8 --algo BACKTRACKING --speed 5
+
+# Chạy Min-Conflicts với Heuristic Max-Conflict đề xuất
+python source/task1_nqueens/main.py --n 8 --algo MIN_CONFLICTS_MAX --speed 2
+
+# Chạy duyệt toàn bộ 92 nghiệm N=8
+python source/task1_nqueens/main.py --n 8 --algo BROWSER
+```
+
+### B. Run Headless CLI Demo (No Display Required)
+```bash
+python source/task1_nqueens/main.py --cli --n 8
+```
+
+### C. Run Jupyter Notebook
+Open `nqueens.ipynb` in VS Code or Jupyter Notebook:
+```bash
+jupyter notebook source/task1_nqueens/nqueens.ipynb
+```
+
+### D. Run Benchmark Experiments from Terminal
+```bash
+python -m task1_nqueens.experiments.benchmark
+```
+
+---
+
+## 5. Summary of Experimental Results
 
 ### A. Glucose3 SAT Solver Performance (Req 2)
 | N | Variables ($N^2$) | Generated Clauses | Theoretical Clauses | Avg Runtime (s) | Status |

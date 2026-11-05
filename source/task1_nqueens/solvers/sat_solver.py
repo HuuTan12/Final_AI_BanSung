@@ -8,7 +8,18 @@ Description:
 """
 
 import time
+import os
+import sys
 from typing import List, Optional
+
+# Ensure source directory is in sys.path
+_file_dir = os.path.dirname(os.path.abspath(__file__))
+_source_dir = os.path.abspath(os.path.join(_file_dir, "..", ".."))
+if _source_dir not in sys.path:
+    sys.path.insert(0, _source_dir)
+_task1_dir = os.path.abspath(os.path.join(_file_dir, ".."))
+if _task1_dir not in sys.path:
+    sys.path.insert(0, _task1_dir)
 
 try:
     from task1_nqueens.solvers.base_solver import BaseSolver, SolverResult
