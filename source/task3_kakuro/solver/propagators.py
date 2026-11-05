@@ -46,11 +46,11 @@ class ConstraintPropagator:
             if pruned:
                 cell.domain &= allowed_vals
                 if self.tracer:
-                    self.tracer.add_event(
-                        EventType.DOMAIN_REDUCED,
-                        cell=cell,
-                        removed_values=pruned,
-                        reason="Initial Filtering"
+                    self.tracer.emit(
+                        EventType.PRUNE,
+                        cell_pos=cell.pos,
+                        pruned_domain=pruned,
+                        message=f"Initial Filtering: pruned {sorted(pruned)} from {cell.pos}"
                     )
 
             # Nếu bất kỳ ô nào có domain rỗng -> Bàn cờ vô nghiệm
@@ -80,11 +80,11 @@ class ConstraintPropagator:
             revised, removed = self._revise(cell, run)
             if revised:
                 if self.tracer and removed:
-                    self.tracer.add_event(
-                        EventType.DOMAIN_REDUCED,
-                        cell=cell,
-                        removed_values=removed,
-                        reason=f"AC3-GAC ({run.direction} Clue {run.target_sum})"
+                    self.tracer.emit(
+                        EventType.PRUNE,
+                        cell_pos=cell.pos,
+                        pruned_domain=removed,
+                        message=f"AC-3: pruned {sorted(removed)} from {cell.pos}"
                     )
 
                 if not cell.domain:
@@ -144,11 +144,11 @@ class ConstraintPropagator:
                         neighbor.domain -= invalid_vals
 
                         if self.tracer:
-                            self.tracer.add_event(
-                                EventType.DOMAIN_REDUCED,
-                                cell=neighbor,
-                                removed_values=invalid_vals,
-                                reason=f"ForwardCheck from ({var.r}, {var.c})={val}"
+                            self.tracer.emit(
+                                EventType.PRUNE,
+                                cell_pos=neighbor.pos,
+                                pruned_domain=invalid_vals,
+                                message=f"ForwardCheck: pruned {sorted(invalid_vals)} from {neighbor.pos}"
                             )
 
                         # Nếu 1 ô láng giềng bị rỗng domain -> Bế tắc

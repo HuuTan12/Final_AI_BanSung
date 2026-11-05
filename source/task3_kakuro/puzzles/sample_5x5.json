@@ -9,7 +9,7 @@
     {"r": 4, "c": 1, "clue": 16, "length": 2}
   ],
   "vertical_clues": [
-    {"r": 1, "c": 1, "clue": 14, "length": 3},
+    {"r": 1, "c": 1, "clue": 14, "length": 2},
     {"r": 0, "c": 2, "clue": 21, "length": 4},
     {"r": 0, "c": 3, "clue": 14, "length": 4},
     {"r": 1, "c": 4, "clue": 11, "length": 2}

@@ -37,7 +37,13 @@ class RunConstraint:
             if sum(combo) == target_sum:
                 valid_combos.append(combo)
         return valid_combos
-
+    
+    def get_possible_digits(self) -> Set[int]:
+        # để tìm cặp giá trị, rồi loại ra khỏi list số
+        digits = set()
+        for combo in self.get_valid_combinations(self.target_sum, self.length):
+            digits.update(combo)
+        return digits
 
         
         
