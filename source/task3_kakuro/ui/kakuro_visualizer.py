@@ -72,9 +72,9 @@ class KakuroVisualizer:
         ]
         self.current_map_idx = 0
 
-        # Cửa sổ hiển thị
-        self.screen_width = 1120
-        self.screen_height = 700
+        # Cửa sổ hiển thị rộng rãi, không bị tràn
+        self.screen_width = 1260
+        self.screen_height = 760
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("Kakuro CSP Visualizer - Introduction to AI (TDTU)")
 
@@ -119,12 +119,12 @@ class KakuroVisualizer:
         self.status_message = f"Đã nạp {filename}: {len(self.csp.variables)} ô trắng, {len(self.events)} sự kiện."
 
         # Tính toán kích thước ô cờ (Cell Size) tự co giãn
-        max_board_w = 640
-        max_board_h = 620
+        max_board_w = 680
+        max_board_h = 680
         self.cell_size = min(max_board_w // self.csp.cols, max_board_h // self.csp.rows)
-        self.cell_size = max(42, min(self.cell_size, 72))
+        self.cell_size = max(48, min(self.cell_size, 76))
 
-        self.board_ox = 30
+        self.board_ox = 35
         self.board_oy = (self.screen_height - (self.csp.rows * self.cell_size)) // 2
 
         # Cấu hình Font chữ trên bàn cờ
@@ -133,19 +133,20 @@ class KakuroVisualizer:
         self.font_clue = pygame.font.SysFont(font_name, int(self.cell_size * 0.23), bold=True)
         self.font_pencil = pygame.font.SysFont(font_name, int(self.cell_size * 0.18), bold=True)
 
-        # Cấu hình vị trí các nút bấm (lưu làm thuộc tính để bắt click đồng bộ 100%)
+        # Cấu hình vị trí các nút bấm (Panel bên phải rộng rãi)
+        px = 750
         self.btn_maps = [
-            pygame.Rect(720 + i * 175, 118, 165, 34)
+            pygame.Rect(px + i * 230, 118, 220, 36)
             for i in range(len(self.available_maps))
         ]
-        self.btn_play = pygame.Rect(720, 295, 165, 36)
-        self.btn_fwd = pygame.Rect(900, 295, 165, 36)
-        self.btn_back = pygame.Rect(720, 340, 165, 36)
-        self.btn_solve = pygame.Rect(900, 340, 165, 36)
-        self.btn_reset = pygame.Rect(720, 385, 165, 36)
-        self.btn_pencil = pygame.Rect(900, 385, 165, 36)
-        self.btn_slower = pygame.Rect(720, 432, 165, 30)
-        self.btn_faster = pygame.Rect(900, 432, 165, 30)
+        self.btn_play = pygame.Rect(px, 305, 220, 38)
+        self.btn_fwd = pygame.Rect(px + 235, 305, 220, 38)
+        self.btn_back = pygame.Rect(px, 355, 220, 38)
+        self.btn_solve = pygame.Rect(px + 235, 355, 220, 38)
+        self.btn_reset = pygame.Rect(px, 405, 220, 38)
+        self.btn_pencil = pygame.Rect(px + 235, 405, 220, 38)
+        self.btn_slower = pygame.Rect(px, 455, 220, 32)
+        self.btn_faster = pygame.Rect(px + 235, 455, 220, 32)
 
     def run(self):
         """Vòng lặp giao diện chính."""
@@ -355,10 +356,10 @@ class KakuroVisualizer:
                 self.screen.blit(t, t.get_rect(center=(cx, cy)))
 
     def draw_control_panel(self):
-        """Vẽ Dashboard điều khiển bên phải."""
-        px = 700
+        """Vẽ Dashboard điều khiển bên phải rộng rãi, rõ nét."""
+        px = 730
         py = 20
-        pw = 390
+        pw = 500
         ph = self.screen_height - 40
 
         panel_rect = pygame.Rect(px, py, pw, ph)
@@ -371,7 +372,7 @@ class KakuroVisualizer:
 
         # --- PHẦN 1: BỘ CHỌN MAP (PUZZLE SELECTOR) ---
         lbl_map = self.font_heading.render("CHỌN BÀN CỜ (SELECT PUZZLE):", True, (226, 232, 240))
-        self.screen.blit(lbl_map, (px + 20, py + 72))
+        self.screen.blit(lbl_map, (px + 20, py + 74))
 
         mouse_pos = pygame.mouse.get_pos()
         for i, (name, filename) in enumerate(self.available_maps):
@@ -385,38 +386,31 @@ class KakuroVisualizer:
             self.screen.blit(txt, txt.get_rect(center=btn_rect.center))
 
         # --- PHẦN 2: THỐNG KÊ TIẾN ĐỘ ---
-        stat_card = pygame.Rect(px + 20, py + 148, pw - 40, 110)
+        stat_card = pygame.Rect(px + 20, py + 168, pw - 40, 115)
         pygame.draw.rect(self.screen, CARD_BG, stat_card, border_radius=8)
 
         ev_total = max(1, len(self.events))
         pct = (self.current_event_idx / ev_total) * 100
         step_txt = f"Bước thực thi: {self.current_event_idx:,} / {len(self.events):,} ({pct:.1f}%)"
-        self.screen.blit(self.font_btn.render(step_txt, True, TEXT_MAIN), (px + 32, py + 160))
+        self.screen.blit(self.font_btn.render(step_txt, True, TEXT_MAIN), (px + 32, py + 180))
 
         # Thanh tiến trình (Progress Bar)
-        bar_rect = pygame.Rect(px + 32, py + 185, pw - 64, 8)
-        pygame.draw.rect(self.screen, (30, 36, 48), bar_rect, border_radius=4)
+        bar_rect = pygame.Rect(px + 32, py + 208, pw - 64, 10)
+        pygame.draw.rect(self.screen, (30, 36, 48), bar_rect, border_radius=5)
         fill_w = int((self.current_event_idx / ev_total) * bar_rect.width)
         if fill_w > 0:
-            pygame.draw.rect(self.screen, BTN_PRIMARY, pygame.Rect(bar_rect.x, bar_rect.y, fill_w, 8), border_radius=4)
+            pygame.draw.rect(self.screen, BTN_PRIMARY, pygame.Rect(bar_rect.x, bar_rect.y, fill_w, 10), border_radius=5)
 
         # Trạng thái diễn giải
         msg = self.status_message
-        if len(msg) > 42:
-            msg = msg[:39] + "..."
-        self.screen.blit(self.font_status.render(f"Trạng thái: {msg}", True, (203, 213, 225)), (px + 32, py + 205))
+        if len(msg) > 52:
+            msg = msg[:49] + "..."
+        self.screen.blit(self.font_status.render(f"Trạng thái: {msg}", True, (203, 213, 225)), (px + 32, py + 228))
 
         stat_info = f"Nodes: {self.solve_result.nodes_explored:,}  |  Backtracks: {self.solve_result.backtracks:,}  |  Time: {self.solve_result.execution_time:.3f}s"
-        self.screen.blit(self.font_status.render(stat_info, True, TEXT_MUTED), (px + 32, py + 228))
+        self.screen.blit(self.font_status.render(stat_info, True, TEXT_MUTED), (px + 32, py + 252))
 
         # --- PHẦN 3: NÚT BẤM ĐIỀU KHIỂN (CONTROLS) ---
-        self.btn_play = pygame.Rect(px + 20, py + 275, 165, 36)
-        self.btn_fwd = pygame.Rect(px + 200, py + 275, 165, 36)
-        self.btn_back = pygame.Rect(px + 20, py + 320, 165, 36)
-        self.btn_solve = pygame.Rect(px + 200, py + 320, 165, 36)
-        self.btn_reset = pygame.Rect(px + 20, py + 365, 165, 36)
-        self.btn_pencil = pygame.Rect(px + 200, py + 365, 165, 36)
-
         self._draw_btn(self.btn_play, "TẠM DỪNG (PAUSE)" if self.is_playing else "PHÁT (PLAY)", BTN_PRIMARY, mouse_pos)
         self._draw_btn(self.btn_fwd, "BƯỚC TIẾP (STEP >)", BTN_SECONDARY, mouse_pos)
         self._draw_btn(self.btn_back, "< BƯỚC TRƯỚC", BTN_SECONDARY, mouse_pos)
@@ -425,13 +419,11 @@ class KakuroVisualizer:
         self._draw_btn(self.btn_pencil, f"BÚT CHÌ: {'BẬT' if self.show_pencil else 'TẮT'}", BTN_SECONDARY, mouse_pos)
 
         # Tùy chỉnh tốc độ (Speed)
-        self.btn_slower = pygame.Rect(px + 20, py + 412, 165, 30)
-        self.btn_faster = pygame.Rect(px + 200, py + 412, 165, 30)
         self._draw_btn(self.btn_slower, "TỐC ĐỘ: CHẬM HƠN", (40, 50, 68), mouse_pos)
         self._draw_btn(self.btn_faster, "TỐC ĐỘ: NHANH HƠN", (40, 50, 68), mouse_pos)
 
         # --- PHẦN 4: CHÚ THÍCH MÀU SẮC (LEGEND) ---
-        ly = py + 460
+        ly = py + 505
         self.screen.blit(self.font_heading.render("CHÚ THÍCH TRỰC QUAN:", True, (226, 232, 240)), (px + 20, ly))
 
         legends = [
@@ -446,11 +438,11 @@ class KakuroVisualizer:
         for i, (col, text) in enumerate(legends):
             row = i // 2
             col_idx = i % 2
-            bx = px + 20 + col_idx * 185
-            by = ly + 28 + row * 26
-            box = pygame.Rect(bx, by, 16, 16)
-            pygame.draw.rect(self.screen, col, box, border_radius=3)
-            self.screen.blit(self.font_body.render(text, True, (203, 213, 225)), (bx + 24, by - 1))
+            bx = px + 20 + col_idx * 240
+            by = ly + 28 + row * 28
+            box = pygame.Rect(bx, by, 18, 18)
+            pygame.draw.rect(self.screen, col, box, border_radius=4)
+            self.screen.blit(self.font_body.render(text, True, (203, 213, 225)), (bx + 26, by))
 
     def _draw_btn(self, rect: pygame.Rect, text: str, base_color: Tuple[int, int, int], mouse_pos: Tuple[int, int]):
         """Hàm phụ trợ vẽ nút bấm bo góc có hiệu ứng hover."""
