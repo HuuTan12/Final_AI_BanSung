@@ -9,7 +9,9 @@ Description:
 
 Legend:
     '.' : Passable sand floor
-    '#' : Destructible wall (3 HP)
+    '#' : Heavy Metal Wall (3 HP, destructible)
+    'W' : Wooden Crate Wall (2 HP, destructible)
+    'S' : Sandbag Barrier (1 HP, destructible)
     'B' : Foliage / Bush canopy (concealment, passable)
     '0' : Player 0 tank spawn (starts facing UP)
     '1' : Player 1 tank spawn (starts facing DOWN)
@@ -93,8 +95,12 @@ class MapLoader:
             for x, ch in enumerate(row):
                 if ch == ".":
                     continue
-                elif ch == "#":
-                    state.walls[(x, y)] = Wall(x, y)
+                elif ch in ("#", "M", "m", "3"):
+                    state.walls[(x, y)] = Wall(x, y, hp=3)
+                elif ch in ("W", "w", "2"):
+                    state.walls[(x, y)] = Wall(x, y, hp=2)
+                elif ch in ("S", "s"):
+                    state.walls[(x, y)] = Wall(x, y, hp=1)
                 elif ch in ("B", "b"):
                     state.foliage.add((x, y))
                 elif ch == "0":
@@ -183,3 +189,23 @@ class MapLoader:
 
         next_idx = (curr_idx + 1) % len(available)
         return os.path.splitext(available[next_idx])[0]
+
+    @classmethod
+    def get_prev_map_name(cls, current_name: str) -> str:
+        """
+        Given the current map name, returns the previous map in cyclic order.
+        """
+        available = cls.get_available_maps()
+        if not available:
+            return current_name
+
+        clean_curr = current_name.lower().replace(".txt", "")
+        curr_idx = 0
+        for i, f in enumerate(available):
+            clean_f = os.path.splitext(f)[0].lower()
+            if clean_curr in clean_f or clean_f in clean_curr:
+                curr_idx = i
+                break
+
+        prev_idx = (curr_idx - 1) % len(available)
+        return os.path.splitext(available[prev_idx])[0]

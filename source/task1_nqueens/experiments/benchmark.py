@@ -150,6 +150,8 @@ class BenchmarkRunner:
         3. Min-Conflicts Average Steps (Random vs Proposed Heuristics).
         4. Min-Conflicts Average Runtime (Random vs Proposed Heuristics).
         """
+        if not os.path.isabs(save_path) and not os.path.dirname(save_path):
+            save_path = os.path.join(_task1_dir, save_path)
         if not self.sat_results or not self.mc_results:
             print("Warning: Please run experiments prior to plotting.")
             return ""
@@ -224,6 +226,9 @@ class BenchmarkRunner:
         # Allow passing n_values as first argument if a list is provided
         if isinstance(save_path, list):
             n_values, save_path = save_path, "cnf_breakdown_task1.png"
+
+        if not os.path.isabs(save_path) and not os.path.dirname(save_path):
+            save_path = os.path.join(_task1_dir, save_path)
 
         if n_values is None:
             n_values = [4, 6, 8, 12, 16, 20]

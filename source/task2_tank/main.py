@@ -81,19 +81,29 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
 
     gui.set_agent_presets_from_agents(agent0, agent1)
 
-    print(f"\n=== MATCH STARTED: {agent0.name} (P0) vs {agent1.name} (P1) | Map: {display_name.upper()} ===")
-    print("Controls: SPACE = Pause/Resume | S/ENTER = Step +1 | U/Z = Undo -1 | R = Reset | M = Next Map | 1..4 = Speed")
-    print("Human Controls: W/A/S/D or Arrows to Move • SPACE to Fire • X to Stay • or click On-Screen D-Pad!")
+    print(f"\n=== MATCH READY: {agent0.name} (P0) vs {agent1.name} (P1) | Map: {display_name.upper()} ===")
+    print("Click [START] button (or press SPACE/P) in the GUI window to begin the match!")
+    print("Controls: P/SPACE = Start/Pause | S = Step +1 | U/Z = Undo -1 | R = Reset | M = Next Map | 1..4 = Speed")
+    print("2-Human PvP Controls: P0 uses [WASD + F/SPACE] | P1 uses [Arrows + ENTER/K] | or click On-Screen D-Pad!")
 
+    import time
     state_history = [state.clone()]
+    last_ai_turn_time = 0.0
 
     running = True
     while running:
         current_pid = state.current_player
         active_agent = agent0 if current_pid == 0 else agent1
         active_is_human = getattr(active_agent, "is_human", False)
+        p0_is_human = getattr(agent0, "is_human", False)
+        p1_is_human = getattr(agent1, "is_human", False)
 
-        running = gui.handle_events(active_player_is_human=active_is_human)
+        running = gui.handle_events(
+            active_player_is_human=active_is_human,
+            current_pid=current_pid,
+            p0_is_human=p0_is_human,
+            p1_is_human=p1_is_human,
+        )
         if not running:
             break
 
@@ -106,10 +116,15 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             agent1 = get_agent_by_name(k1, depth=d1)
             print(f"[HUD Switch] P0 updated to '{agent0.name}', P1 updated to '{agent1.name}'")
 
-        # Handle in-game map cycling (Key M or Map button)
-        if gui.map_requested:
+        # Handle in-game map cycling (Key M / N or Map button / badge)
+        if gui.map_requested or getattr(gui, "map_prev_requested", False):
+            is_prev = getattr(gui, "map_prev_requested", False)
             gui.map_requested = False
-            next_map = MapLoader.get_next_map_name(current_map_name)
+            gui.map_prev_requested = False
+            next_map = (
+                MapLoader.get_prev_map_name(current_map_name)
+                if is_prev else MapLoader.get_next_map_name(current_map_name)
+            )
             current_map_name = next_map
             state, display_name = MapLoader.load_by_query(current_map_name)
             state.max_cycles = max_cycles
@@ -118,7 +133,9 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.explosions.clear()
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
-            print(f"[Control] Cycled to Map: {display_name.upper()}")
+            gui.reset_match_wait_state()
+            gui.add_combat_log(f"[MAP] Switched to {display_name.upper()}. Click START to begin.", (245, 190, 35))
+            print(f"[Control] Cycled to Map: {display_name.upper()} (Waiting for START)")
             gui.render(state, agent0, agent1)
             continue
 
@@ -132,7 +149,9 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.explosions.clear()
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
-            print(f"[Control] Match reset to initial state on map {display_name.upper()}.")
+            gui.reset_match_wait_state()
+            gui.add_combat_log("[RESET] Match reset to initial positions. Click START to begin.", (245, 190, 35))
+            print(f"[Control] Match reset to initial state on map {display_name.upper()} (Waiting for START).")
             gui.render(state, agent0, agent1)
             continue
 
@@ -153,22 +172,29 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.render(state, agent0, agent1)
             continue
 
-        # If paused and no step requested, render idle frame
+        # If paused (or waiting for START) and no step requested, render idle frame
         if gui.is_paused and not gui.step_requested:
             gui.render(state, agent0, agent1)
             continue
 
-        # Handle Human Player Turn: Wait for human input
+        # Handle Human Player Turn: Wait for human input from active player's queue
         if active_is_human:
-            if gui.human_action_queued is None:
+            queued_act = gui.get_queued_human_action(current_pid)
+            if queued_act is None:
                 gui.render(state, agent0, agent1)
                 continue
             else:
-                action = gui.human_action_queued
-                gui.human_action_queued = None
+                action = queued_act
         else:
+            # Slower, visually intuitive pacing between AI turns (without freezing GUI events)
+            if not gui.step_requested:
+                turn_delay = 0.35 / max(0.25, gui.speed_multiplier)
+                if time.perf_counter() - last_ai_turn_time < turn_delay:
+                    gui.render(state, agent0, agent1)
+                    continue
             gui.step_requested = False
             action = active_agent.choose_action(state, current_pid)
+            last_ai_turn_time = time.perf_counter()
 
         gui.step_requested = False
 
@@ -203,7 +229,7 @@ def main():
     parser.add_argument("--p0", default="heuristic_alphabeta", help="Player 0 algorithm (human, heuristic_alphabeta, id_ab, alphabeta, heuristic_minimax, minimax, greedy, rival)")
     parser.add_argument("--p1", default="alphabeta", help="Player 1 algorithm (human, heuristic_alphabeta, id_ab, alphabeta, heuristic_minimax, minimax, greedy, rival)")
     parser.add_argument("--depth", type=int, default=3, help="Search depth for built-in agents")
-    parser.add_argument("--map", default="01", help="Map scenario name, index (01..08), or custom .txt file path")
+    parser.add_argument("--map", default="01", help="Map scenario name, index (01..09), or custom .txt file path")
     parser.add_argument("--load_external", type=str, default=None, help="Path to external rival group agent .py file")
     parser.add_argument("--max_cycles", type=int, default=40, help="Max game cycles before draw")
 

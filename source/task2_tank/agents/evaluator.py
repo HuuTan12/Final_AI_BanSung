@@ -13,7 +13,8 @@ Description:
     - Bullet incoming threat penalty (must dodge incoming bullets)
 """
 
-from typing import Tuple
+from collections import deque
+from typing import Tuple, Dict
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.actions import Direction
 
@@ -23,6 +24,8 @@ class TankEvaluator:
     Heuristic Evaluation Function for the Tank Battle zero-sum game.
     Higher score indicates greater advantage for player_id.
     """
+
+    _dist_cache: Dict[Tuple, Dict[Tuple[int, int], int]] = {}
 
     def __init__(
         self,
@@ -39,6 +42,80 @@ class TankEvaluator:
         self.w_dist_tank = w_dist_tank
         self.w_line_of_fire = w_line_of_fire
         self.w_bullet_danger = w_bullet_danger
+
+    @classmethod
+    def get_tactical_distance(cls, state: GameState, sx: int, sy: int, tx: int, ty: int) -> int:
+        """
+        Computes terrain-aware shortest path distance from (sx, sy) to (tx, ty)
+        using a cached 0-1-2-3-4 bucket-BFS over the grid:
+        - Open cell / Bush canopy / Target cell: step cost = 1
+        - Destructible Wall (1..3 HP): step cost = 1 + wall.hp (1 move + wall.hp shots to breach)
+        This allows agents to both navigate around heavy walls and value damaging/breaching
+        blocking obstacles along the optimal attack corridor at any search depth.
+        """
+        if sx == tx and sy == ty:
+            return 0
+
+        wall_sig = tuple((pos, w.hp) for pos, w in state.walls.items() if w.is_alive)
+        cache_key = (state.width, state.height, tx, ty, hash(wall_sig))
+
+        dist_grid = cls._dist_cache.get(cache_key)
+        if dist_grid is None:
+            if len(cls._dist_cache) > 512:
+                cls._dist_cache.clear()
+            dist_grid = cls._compute_distance_field(state, tx, ty)
+            cls._dist_cache[cache_key] = dist_grid
+
+        return dist_grid.get((sx, sy), abs(sx - tx) + abs(sy - ty))
+
+    @staticmethod
+    def _compute_distance_field(state: GameState, tx: int, ty: int) -> Dict[Tuple[int, int], int]:
+        """
+        Computes shortest terrain-aware path cost from all cells to (tx, ty) using Dial's bucket BFS.
+        """
+        w, h = state.width, state.height
+        dist: Dict[Tuple[int, int], int] = {(tx, ty): 0}
+        blocked_bases = {
+            (b.x, b.y) for b in state.bases.values()
+            if b.is_alive and (b.x != tx or b.y != ty)
+        }
+
+        max_possible = (w + h) * 4
+        buckets: Dict[int, deque] = {0: deque([(tx, ty)])}
+        curr_d = 0
+
+        while buckets:
+            while curr_d not in buckets and curr_d <= max_possible:
+                curr_d += 1
+            if curr_d > max_possible:
+                break
+
+            q = buckets[curr_d]
+            cx, cy = q.popleft()
+            if not q:
+                del buckets[curr_d]
+
+            if curr_d > dist.get((cx, cy), max_possible):
+                continue
+
+            for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                nx, ny = cx + dx, cy + dy
+                if not (0 <= nx < w and 0 <= ny < h):
+                    continue
+                if (nx, ny) in blocked_bases:
+                    continue
+
+                wall = state.walls.get((nx, ny))
+                step_cost = (1 + wall.hp) if (wall is not None and wall.is_alive) else 1
+                nd = curr_d + step_cost
+
+                if nd < dist.get((nx, ny), max_possible):
+                    dist[(nx, ny)] = nd
+                    if nd not in buckets:
+                        buckets[nd] = deque()
+                    buckets[nd].append((nx, ny))
+
+        return dist
 
     def evaluate(self, state: GameState, player_id: int) -> float:
         """
@@ -66,13 +143,13 @@ class TankEvaluator:
         opp_tank_hp = opp_tank.hp if (opp_tank and opp_tank.is_alive) else 0
         score += self.w_tank_hp * (my_tank_hp - opp_tank_hp)
 
-        # 3. Distance to enemy base (Manhattan distance)
+        # 3. Terrain-aware tactical distance to enemy base (accounts for walls & multi-HP obstacles)
         if my_tank and my_tank.is_alive and opp_base and opp_base.is_alive:
-            my_dist_to_opp_base = abs(my_tank.x - opp_base.x) + abs(my_tank.y - opp_base.y)
+            my_dist_to_opp_base = self.get_tactical_distance(state, my_tank.x, my_tank.y, opp_base.x, opp_base.y)
             score -= self.w_dist_base * my_dist_to_opp_base
 
         if opp_tank and opp_tank.is_alive and my_base and my_base.is_alive:
-            opp_dist_to_my_base = abs(opp_tank.x - my_base.x) + abs(opp_tank.y - my_base.y)
+            opp_dist_to_my_base = self.get_tactical_distance(state, opp_tank.x, opp_tank.y, my_base.x, my_base.y)
             score += self.w_dist_base * opp_dist_to_my_base
 
         # 4. Tank to Tank distance
@@ -192,18 +269,21 @@ class TankEvaluator:
             if first_hit == "tank":
                 return 100.0  # Clear shot at enemy tank!
 
-            # If hitting a wall directly 1 step ahead that blocks path to enemy
+            # If hitting a wall within effective bullet range (up to 4 cells) that blocks path to enemy
             if first_hit and first_hit[0] == "wall":
                 wx, wy = first_hit[1], first_hit[2]
-                if abs(wx - tank.x) <= 1 and abs(wy - tank.y) <= 1:
-                    # Wall is directly in front
+                wall_dist = abs(wx - tank.x) + abs(wy - tank.y)
+                wall_obj = state.walls.get((wx, wy))
+                w_hp = wall_obj.hp if wall_obj else 3
+                if wall_dist <= 4:
                     if opp_base and opp_base.is_alive:
-                        curr_dist = abs(tank.x - opp_base.x) + abs(tank.y - opp_base.y)
-                        target_dist = abs(wx - opp_base.x) + abs(wy - opp_base.y)
-                        if target_dist < curr_dist:
-                            return 75.0  # Breaching obstacle towards enemy base
-                    return 25.0
-                return 5.0  # Firing at a distant wall is low priority
+                        curr_dist = TankEvaluator.get_tactical_distance(state, tank.x, tank.y, opp_base.x, opp_base.y)
+                        target_dist = TankEvaluator.get_tactical_distance(state, wx, wy, opp_base.x, opp_base.y)
+                        if target_dist < curr_dist or wx == opp_base.x or wy == opp_base.y:
+                            # Prefer breaching weaker obstacles (1-HP sandbags > 2-HP wood > 3-HP metal)
+                            return 78.0 - (w_hp * 2.0) - (wall_dist * 0.5)
+                    return 28.0 - w_hp
+                return 8.0  # Firing at a distant wall is low priority
 
             return 5.0  # Firing into empty space
 
@@ -219,13 +299,23 @@ class TankEvaluator:
             if opp_base and opp_base.is_alive and nx == opp_base.x and ny == opp_base.y:
                 return 95.0  # Aim directly at adjacent enemy base!
 
+            # If target cell is blocked by a wall, moving only turns the tank in place
+            if (nx, ny) in state.walls and state.walls[(nx, ny)].is_alive:
+                wall_obj = state.walls[(nx, ny)]
+                if opp_base and opp_base.is_alive:
+                    curr_dist = TankEvaluator.get_tactical_distance(state, tank.x, tank.y, opp_base.x, opp_base.y)
+                    wall_dist = TankEvaluator.get_tactical_distance(state, nx, ny, opp_base.x, opp_base.y)
+                    if wall_dist < curr_dist:
+                        return 52.0 - wall_obj.hp  # Turn to face blocking obstacle on route
+                return 12.0
+
             priority = 40.0
 
             if opp_base and opp_base.is_alive:
-                curr_dist = abs(tank.x - opp_base.x) + abs(tank.y - opp_base.y)
-                new_dist = abs(nx - opp_base.x) + abs(ny - opp_base.y)
+                curr_dist = TankEvaluator.get_tactical_distance(state, tank.x, tank.y, opp_base.x, opp_base.y)
+                new_dist = TankEvaluator.get_tactical_distance(state, nx, ny, opp_base.x, opp_base.y)
                 if new_dist < curr_dist:
-                    priority += 40.0  # +40 for closing in on base (total 80)
+                    priority += 42.0  # +42 for advancing along shortest terrain-aware path
                 elif new_dist > curr_dist:
                     priority -= 25.0
 
@@ -233,7 +323,7 @@ class TankEvaluator:
                 curr_tdist = abs(tank.x - opp_tank.x) + abs(tank.y - opp_tank.y)
                 new_tdist = abs(nx - opp_tank.x) + abs(ny - opp_tank.y)
                 if new_tdist < curr_tdist:
-                    priority += 25.0  # +25 for approaching enemy tank
+                    priority += 20.0  # +20 for approaching enemy tank
                 elif new_tdist > curr_tdist:
                     priority -= 10.0
 

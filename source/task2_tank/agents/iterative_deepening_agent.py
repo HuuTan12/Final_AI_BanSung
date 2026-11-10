@@ -49,7 +49,8 @@ class IterativeDeepeningAgent(BaseAgent):
             f"{b.x},{b.y},{b.direction.name},{b.owner_id}"
             for b in state.bullets if b.is_active
         )
-        return f"{player_id}_{state.current_player}_{tank_str}_{base_str}_{bullet_str}_{len(state.walls)}"
+        wall_hp_sum = sum(w.hp for w in state.walls.values() if w.is_alive)
+        return f"{player_id}_{state.current_player}_{tank_str}_{base_str}_{bullet_str}_{len(state.walls)}_{wall_hp_sum}"
 
     def choose_action(self, state: GameState, player_id: int) -> Action:
         """

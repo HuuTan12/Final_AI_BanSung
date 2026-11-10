@@ -107,9 +107,9 @@ class StepMinConflictsGenerator:
                 step_num=total_steps,
                 restarts_count=restart_idx,
                 conflicted_cols=conflicted_cols,
-                message=(f"Khởi tạo bàn cờ ban đầu ({self.init_mode}): {init_conflicts} xung đột."
+                message=(f"Initial board configuration ({self.init_mode}): {init_conflicts} conflicts."
                          if restart_idx == 0 else
-                         f"Kích hoạt Khởi động lại ngẫu nhiên (Restart #{restart_idx}): {init_conflicts} xung đột.")
+                         f"Random Restart triggered (Restart #{restart_idx}): {init_conflicts} conflicts.")
             )
 
             if init_conflicts == 0:
@@ -123,7 +123,7 @@ class StepMinConflictsGenerator:
                     step_num=total_steps,
                     restarts_count=restart_idx,
                     conflicted_cols=[],
-                    message="Bàn cờ ban đầu đã là nghiệm hợp lệ hoàn hảo!"
+                    message="Initial state is already a valid peaceful solution!"
                 )
                 return
 
@@ -151,7 +151,7 @@ class StepMinConflictsGenerator:
                         step_num=total_steps,
                         restarts_count=restart_idx,
                         conflicted_cols=[],
-                        message=f"🎉 ĐÃ GIẢI THÀNH CÔNG! Nghiệm đạt 0 xung đột sau {total_steps} bước."
+                        message=f"SOLVED! Zero conflicts achieved after {total_steps} steps."
                     )
                     return
 
@@ -210,8 +210,8 @@ class StepMinConflictsGenerator:
                     step_num=total_steps,
                     restarts_count=restart_idx,
                     conflicted_cols=conflicted_cols,
-                    message=(f"[{h_name}] Chọn cột {col_to_move} ({cur_queen_conflicts} xung đột). "
-                             f"Hàng tối ưu: {chosen_row} (xung đột = {min_c}).")
+                    message=(f"[{h_name}] Selected Column {col_to_move} ({cur_queen_conflicts} conflicts). "
+                             f"Optimal Row: {chosen_row} (conflicts = {min_c}).")
                 )
 
                 # Update board and frequency tables
@@ -239,7 +239,7 @@ class StepMinConflictsGenerator:
                     step_num=total_steps,
                     restarts_count=restart_idx,
                     conflicted_cols=[c for c in conflicted_cols if c != col_to_move],
-                    message=f"Di chuyển hậu cột {col_to_move} tới hàng {chosen_row}. Tổng xung đột còn: {new_total_conflicts}."
+                    message=f"Moved Queen in Col {col_to_move} to Row {chosen_row}. Total conflicts: {new_total_conflicts}."
                 )
 
                 if new_total_conflicts == 0:
@@ -253,7 +253,7 @@ class StepMinConflictsGenerator:
                         step_num=total_steps,
                         restarts_count=restart_idx,
                         conflicted_cols=[],
-                        message=f"🎉 ĐÃ GIẢI THÀNH CÔNG! Nghiệm đạt 0 xung đột sau {total_steps} bước."
+                        message=f"SOLVED! Zero conflicts achieved after {total_steps} steps."
                     )
                     return
 
@@ -268,7 +268,7 @@ class StepMinConflictsGenerator:
             step_num=total_steps,
             restarts_count=self.max_restarts,
             conflicted_cols=conflicted_cols,
-            message=f"Đã đạt giới hạn tối đa {total_steps} bước. Thử lại hoặc đổi thuật toán!"
+            message=f"Max step limit reached ({total_steps} steps). Retrying or switch algorithm!"
         )
 
     def _get_conflicted_variables(

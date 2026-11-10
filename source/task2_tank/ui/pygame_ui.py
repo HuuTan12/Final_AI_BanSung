@@ -1,18 +1,15 @@
 """
-pygame_ui.py - High-Fidelity Tactical Battle City GUI with Multi-Agent HUD & Realistic Bullet Physics
+pygame_ui.py - High-Fidelity Tactical Battle City GUI with Clean Technical HUD & 2-Human PvP Support
 Course: Introduction to Artificial Intelligence (503043)
 Author: Student Group
 Description:
-    Implements a responsive, esports-grade Pygame GUI with:
-    1. Realistic cell-by-cell bullet flight animations with muzzle flashes, projectile smoke trails,
-       and fiery impact explosions adhering strictly to the 3 cells/cycle rule.
-    2. Interactive multi-agent selector: Choose between Human, Heuristic Alpha-Beta,
-       Iterative Deepening Alpha-Beta (proposed), Alpha-Beta Pruning, Heuristic Minimax,
-       Minimax Search, Greedy Tactical, or External Rival for both tanks.
-    3. Interactive Human player mode: Keyboard controls (WASD/Arrows + SPACE) and clickable On-Screen D-Pad.
-    4. Sleek tactical HUD featuring embedded Kenney asset sprites, battery-style health bars,
-       live search telemetry, bidirectional heuristic advantage meter, and combat specifications.
-    5. Turn-based playback deck with Play/Pause, Step +1, Undo -1, Reset, Map cycling, and Speed presets.
+    Implements a responsive, intuitive Pygame GUI with:
+    1. Smooth tank movement & cell-by-cell bullet flight animations (3 cells/cycle rule).
+    2. Start-on-demand workflow: Match waits in READY state until the user clicks START.
+    3. Clean, easy-to-read Technical Parameters & Telemetry HUD without visual clutter.
+    4. Optimized 2-Human PvP mode with separate keyboard zones (P0: WASD+F/SPACE, P1: Arrows+ENTER)
+       and independent input queues so simultaneous keypresses are never lost or cross-triggered.
+    5. Interactive On-Screen Control Pad and dynamic algorithm/depth switcher.
 """
 
 import os
@@ -51,21 +48,24 @@ AGENT_PRESETS = [
 
 class TankGameGUI:
     """
-    High-Fidelity Graphical User Interface for the Tank Battle Game.
+    Graphical User Interface for the Tank Battle Game.
     """
 
     def __init__(self, cell_size: int = 46, fps: int = 60):
         self.cell_size = cell_size
         self.fps = fps
-        self.speed_multiplier = 1.0  # 0.5x, 1.0x, 2.0x, 10.0x (Turbo)
+        self.speed_multiplier = 1.0  # 0.5x, 1.0x, 2.0x, 4.0x
 
-        # Playback control flags
-        self.is_paused: bool = False
+        # Playback control flags: Start paused waiting for user to press START
+        self.is_paused: bool = True
+        self.match_started: bool = False
         self.step_requested: bool = False
         self.undo_requested: bool = False
         self.restart_requested: bool = False
         self.map_requested: bool = False
+        self.map_prev_requested: bool = False
         self.current_map_title: str = "01_classic_battlecity"
+        self.map_badge_rect: Optional[pygame.Rect] = None
 
         # Agent switching flags
         self.agent_changed: bool = False
@@ -85,6 +85,7 @@ class TankGameGUI:
         self.buttons: List[Dict[str, Any]] = []
         self.speed_buttons: List[Dict[str, Any]] = []
         self.dpad_buttons: List[Dict[str, Any]] = []
+        self.start_banner_rect: Optional[pygame.Rect] = None
 
         # Visual FX state
         self.tracks: List[Dict[str, Any]] = []         # [{x, y, dir, life}]
@@ -92,50 +93,49 @@ class TankGameGUI:
         self.muzzle_flashes: List[Dict[str, Any]] = [] # [{x, y, dir, frame, max_frames}]
         self.damage_flashes: Dict[str, int] = {}       # {entity_key: frames_remaining}
 
-        # Sub-step animated bullet flight state
-        self.is_animating_turn: bool = False
+        # Sub-step animated tank & bullet state
+        self.animated_tank_override: Dict[int, Tuple[int, int, Direction]] = {}
         self.animated_bullets: List[Dict[str, Any]] = []
 
-        # Real-time combat event log feed
+        # Clean combat event log feed
         self.combat_logs: List[Dict[str, Any]] = [
-            {"text": "[SYS] Command Deck initialized. Grid: 13x13", "color": (140, 160, 190)},
-            {"text": "[RULES] Tanks (HP 6) | Bases (HP 9) | Walls (HP 1-3)", "color": (120, 140, 170)},
-            {"text": "[WEAPON] Kinetic shell speed: 3 cells/cycle, cell-by-cell check", "color": (245, 185, 25)},
-            {"text": "[STATUS] Match initialized. Ready for command input.", "color": (46, 204, 113)},
+            {"text": "[READY] Match loaded. Click [START] button on the right panel to begin.", "color": (46, 204, 113)},
+            {"text": "[RULES] Tank: 6 HP | Base: 9 HP | Wall: 1-3 HP | Bullet: 3 cells/turn", "color": (160, 180, 210)},
         ]
 
         # Telemetry & Evaluator
         self.eval_score: float = 0.0
         self.smooth_eval: float = 0.0
         self.evaluator = TankEvaluator()
+
+        # Independent Human action queues for P0 and P1 (optimizes 2-Human PvP)
+        self.human_queues: Dict[int, Optional[Action]] = {0: None, 1: None}
         self.human_action_queued: Optional[Action] = None
 
-        # Color Palette - Professional Dark Carbon & Tactical Matte Steel
+        # Color Palette - Clean Modern Dark Slate
         self.COLOR_BG = (15, 18, 26)
-        self.COLOR_SIDEBAR_BG = (18, 22, 32)
-        self.COLOR_CARD_BG = (24, 30, 44)
-        self.COLOR_CARD_BORDER = (42, 54, 76)
-        self.COLOR_CARD_HEADER = (30, 38, 56)
-        self.COLOR_INSET_BG = (14, 18, 26)
-        self.COLOR_INSET_BORDER = (32, 42, 60)
+        self.COLOR_SIDEBAR_BG = (20, 25, 36)
+        self.COLOR_CARD_BG = (28, 35, 50)
+        self.COLOR_CARD_BORDER = (45, 58, 82)
+        self.COLOR_CARD_HEADER = (34, 43, 62)
+        self.COLOR_INSET_BG = (16, 21, 30)
+        self.COLOR_INSET_BORDER = (36, 46, 66)
         self.COLOR_TEXT = (242, 246, 252)
-        self.COLOR_TEXT_DIM = (150, 165, 188)
-        self.COLOR_TEXT_MUTED = (90, 105, 125)
-        self.COLOR_GOLD = (245, 185, 25)
+        self.COLOR_TEXT_DIM = (155, 170, 195)
+        self.COLOR_TEXT_MUTED = (100, 115, 140)
+        self.COLOR_GOLD = (245, 190, 35)
         self.COLOR_AMBER = (230, 126, 34)
-        self.COLOR_CYAN = (52, 219, 219)
+        self.COLOR_CYAN = (56, 189, 248)
         self.COLOR_EMERALD = (46, 204, 113)
 
         # Team Color Themes
-        self.COLOR_P0_PRIMARY = (52, 152, 219)     # Electric Blue (Player 0 MAX)
-        self.COLOR_P0_BG = (20, 32, 52)
-        self.COLOR_P0_BORDER = (41, 128, 185)
-        self.COLOR_P0_GLOW = (90, 185, 255)
+        self.COLOR_P0_PRIMARY = (56, 165, 245)     # Blue (Player 0 MAX)
+        self.COLOR_P0_BG = (22, 32, 48)
+        self.COLOR_P0_BORDER = (45, 130, 195)
 
-        self.COLOR_P1_PRIMARY = (231, 76, 60)      # Crimson Red (Player 1 MIN)
-        self.COLOR_P1_BG = (48, 24, 28)
-        self.COLOR_P1_BORDER = (192, 57, 43)
-        self.COLOR_P1_GLOW = (255, 110, 95)
+        self.COLOR_P1_PRIMARY = (235, 85, 70)      # Red (Player 1 MIN)
+        self.COLOR_P1_BG = (44, 24, 30)
+        self.COLOR_P1_BORDER = (190, 65, 55)
 
         # Entity colors (fallback)
         self.COLOR_WALL = (165, 85, 54)
@@ -145,7 +145,7 @@ class TankGameGUI:
         self.COLOR_HP_RED = (231, 76, 60)
 
     def init_display(self, width_cells: int, height_cells: int) -> bool:
-        """Initializes Pygame window, custom fonts, buttons, and visual assets."""
+        """Initializes Pygame window, fonts, buttons, and visual assets."""
         if not PYGAME_AVAILABLE:
             print("[TankGameGUI] Notice: Pygame is not installed. Running in headless mode.")
             return False
@@ -157,22 +157,24 @@ class TankGameGUI:
             self.board_w = width_cells * self.cell_size
             self.board_h = height_cells * self.cell_size
             self.width_px = self.board_w + self.sidebar_width
-            self.height_px = max(self.board_h, 800)
+            self.height_px = max(self.board_h + 110, 760)
 
             self.screen = pygame.display.set_mode((self.width_px, self.height_px))
-            pygame.display.set_caption("AI Tank Battle - Tactical Esports Command Deck (TDTU)")
+            pygame.display.set_caption("AI Tank Battle - Adversarial Search Visualizer (TDTU)")
             self.clock = pygame.time.Clock()
 
-            # Typography hierarchy
-            self.font_title = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 16, bold=True)
-            self.font_header = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 13, bold=True)
-            self.font_large = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 12, bold=True)
-            self.font = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 11)
-            self.font_badge = pygame.font.SysFont("Consolas,Courier New,Arial", 11, bold=True)
-            self.font_metric_val = pygame.font.SysFont("Consolas,Lucida Console,Courier New", 13, bold=True)
-            self.font_metric_lbl = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 9, bold=True)
-            self.font_small = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 10)
-            self.font_coord = pygame.font.SysFont("Consolas,Courier New,Arial", 9, bold=True)
+            font_family = "Segoe UI,Arial"
+            mono_family = "Consolas,Courier New,Arial"
+            self.font_title = pygame.font.SysFont(font_family, 17, bold=True)
+            self.font_header = pygame.font.SysFont(font_family, 13, bold=True)
+            self.font_large = pygame.font.SysFont(font_family, 14, bold=True)
+            self.font = pygame.font.SysFont(font_family, 12)
+            self.font_bold = pygame.font.SysFont(font_family, 12, bold=True)
+            self.font_badge = pygame.font.SysFont(mono_family, 11, bold=True)
+            self.font_metric_val = pygame.font.SysFont(mono_family, 15, bold=True)
+            self.font_metric_lbl = pygame.font.SysFont(font_family, 10, bold=True)
+            self.font_small = pygame.font.SysFont(font_family, 11)
+            self.font_coord = pygame.font.SysFont(mono_family, 11, bold=True)
 
             self._load_sprites()
             self._init_buttons()
@@ -182,7 +184,7 @@ class TankGameGUI:
             return False
 
     def _load_sprites(self) -> None:
-        """Loads PNG sprites from Kenney assets with high-contrast scaling."""
+        """Loads PNG sprites from Kenney assets."""
         asset_dir = os.path.join(
             os.path.dirname(__file__), "..", "assets", "tanks-task2", "PNG", "Default size"
         )
@@ -223,15 +225,12 @@ class TankGameGUI:
         self.sprites["wall_3"] = load_scaled("crateMetal.png", cs - 4, cs - 4)
         self.sprites["wall_2"] = load_scaled("crateWood.png", cs - 4, cs - 4)
         self.sprites["wall_1"] = load_scaled("sandbagBrown.png", cs - 4, cs - 4)
-        self.sprites["wall_3_icon"] = load_scaled("crateMetal.png", 18, 18)
-        self.sprites["wall_2_icon"] = load_scaled("crateWood.png", 18, 18)
-        self.sprites["wall_1_icon"] = load_scaled("sandbagBrown.png", 18, 18)
 
-        # 5. Base HQs
-        self.sprites["base_0"] = load_scaled("barrelBlack_top.png", cs - 6, cs - 6)
-        self.sprites["base_1"] = load_scaled("barrelRed_top.png", cs - 6, cs - 6)
-        self.sprites["base_0_icon"] = load_scaled("barrelBlack_top.png", 20, 20)
-        self.sprites["base_1_icon"] = load_scaled("barrelRed_top.png", 20, 20)
+        # 5. Base HQs (Fortified Command Citadels - "Cứ điểm")
+        self.sprites["base_0"] = self._create_citadel_surface(cs - 4, pid=0)
+        self.sprites["base_1"] = self._create_citadel_surface(cs - 4, pid=1)
+        self.sprites["base_0_icon"] = self._create_citadel_surface(24, pid=0)
+        self.sprites["base_1_icon"] = self._create_citadel_surface(24, pid=1)
 
         # 6. Explosions & Smoke
         for i in range(1, 6):
@@ -239,57 +238,145 @@ class TankGameGUI:
         for i in range(1, 4):
             self.sprites[f"smoke_{i}"] = load_scaled(f"explosionSmoke{i}.png", cs, cs)
 
-        # 7. Dedicated Armory & Telemetry Showcase Sprites
-        self.sprites["crate_metal_spec"] = load_scaled("crateMetal.png", 22, 22)
-        self.sprites["crate_wood_spec"] = load_scaled("crateWood.png", 22, 22)
-        self.sprites["sandbag_spec"] = load_scaled("sandbagBrown.png", 22, 22)
+        # 7. Rules Showcase Sprites
+        self.sprites["crate_metal_spec"] = load_scaled("crateMetal.png", 20, 20)
+        self.sprites["crate_wood_spec"] = load_scaled("crateWood.png", 20, 20)
+        self.sprites["sandbag_spec"] = load_scaled("sandbagBrown.png", 20, 20)
+
+    @staticmethod
+    def _draw_star_polygon(
+        surf: Any,
+        cx: float,
+        cy: float,
+        outer_r: float,
+        inner_r: float,
+        fill_color: Tuple[int, int, int],
+        border_color: Optional[Tuple[int, int, int]] = None
+    ) -> None:
+        """Draws a crisp 5-pointed military command star centered at (cx, cy)."""
+        pts = []
+        for i in range(10):
+            angle = -math.pi / 2 + i * (math.pi / 5)
+            r = outer_r if i % 2 == 0 else inner_r
+            pts.append((cx + math.cos(angle) * r, cy + math.sin(angle) * r))
+        pygame.draw.polygon(surf, fill_color, pts)
+        if border_color is not None:
+            pygame.draw.polygon(surf, border_color, pts, 1)
+
+    def _create_citadel_surface(self, size: int, pid: int) -> Any:
+        """
+        Generates a fortified Command Citadel ('Cứ điểm') surface with:
+        - Reinforced steel bunker baseplate & 4 corner bastion turrets
+        - Cardinal armor embrasures & radar crosshairs
+        - Team-colored energy shield ring (Blue MAX / Red MIN)
+        - Central 5-pointed Golden Command Star emblem
+        """
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx, cy = size / 2.0, size / 2.0
+
+        if pid == 0:
+            team_main = (45, 160, 245)
+            team_dark = (16, 56, 105)
+            team_glow = (110, 215, 255)
+        else:
+            team_main = (235, 75, 65)
+            team_dark = (108, 22, 26)
+            team_glow = (255, 155, 95)
+
+        # 1. Outer reinforced steel bunker plate
+        pad = max(1, size // 14)
+        base_rect = pygame.Rect(pad, pad, size - 2 * pad, size - 2 * pad)
+        pygame.draw.rect(surf, (24, 31, 44), base_rect, border_radius=max(3, size // 7))
+        pygame.draw.rect(surf, (78, 94, 122), base_rect, 1, border_radius=max(3, size // 7))
+
+        # 2. Four Corner Bastion Turrets (Fortress Pillars)
+        tw = max(4, int(size * 0.24))
+        corners = [
+            (0, 0),
+            (size - tw, 0),
+            (0, size - tw),
+            (size - tw, size - tw),
+        ]
+        for tx, ty in corners:
+            t_rect = pygame.Rect(tx, ty, tw, tw)
+            pygame.draw.rect(surf, (38, 48, 66), t_rect, border_radius=2)
+            pygame.draw.rect(surf, (110, 128, 158), t_rect, 1, border_radius=2)
+            if size >= 32:
+                pygame.draw.circle(surf, team_glow, (tx + tw // 2, ty + tw // 2), 1)
+
+        # 3. Cardinal Armor Embrasures & Crosshair Struts
+        pygame.draw.line(surf, (58, 74, 100), (pad + 2, int(cy)), (size - pad - 3, int(cy)), 2)
+        pygame.draw.line(surf, (58, 74, 100), (int(cx), pad + 2), (int(cx), size - pad - 3), 2)
+
+        # 4. Fortified Team Shield Ring & Command Dome
+        outer_ring_r = int(size * 0.36)
+        inner_dome_r = int(size * 0.28)
+        pygame.draw.circle(surf, team_dark, (int(cx), int(cy)), outer_ring_r)
+        pygame.draw.circle(surf, team_main, (int(cx), int(cy)), outer_ring_r, max(1, size // 18))
+        pygame.draw.circle(surf, (18, 24, 36), (int(cx), int(cy)), inner_dome_r)
+        pygame.draw.circle(surf, team_glow, (int(cx), int(cy)), inner_dome_r, 1)
+
+        # 5. Central 5-Pointed Golden Command Star ("Cứ điểm")
+        star_outer = max(4.0, size * 0.22)
+        star_inner = max(2.0, size * 0.095)
+        self._draw_star_polygon(surf, cx, cy, star_outer, star_inner, (250, 200, 40), (255, 242, 175))
+        if size >= 32:
+            self._draw_star_polygon(surf, cx, cy, star_outer * 0.52, star_inner * 0.52, (255, 248, 210))
+
+        return surf
 
     def _init_buttons(self) -> None:
-        """Creates interactive buttons in sidebar."""
-        pad_x = self.board_w + 14
-        card_w = self.sidebar_width - 28
-        btn_y = 78
+        """Creates interactive buttons in the sidebar."""
+        pad_x = self.board_w + 16
+        card_w = self.sidebar_width - 32
+        btn_y = 70
 
-        # Row 1: Action Controls
+        # Row 1: Action Controls (Prominent START/PAUSE + 4 actions)
         w_btn = (card_w - 20) // 5
         self.buttons = [
-            {"id": "play_pause", "label": "PAUSE",   "rect": pygame.Rect(pad_x, btn_y, w_btn, 24)},
-            {"id": "step",       "label": "STEP +1", "rect": pygame.Rect(pad_x + w_btn + 5, btn_y, w_btn, 24)},
-            {"id": "undo",       "label": "UNDO -1", "rect": pygame.Rect(pad_x + 2 * (w_btn + 5), btn_y, w_btn, 24)},
-            {"id": "restart",    "label": "RESET",   "rect": pygame.Rect(pad_x + 3 * (w_btn + 5), btn_y, w_btn, 24)},
-            {"id": "next_map",   "label": "MAP >>",  "rect": pygame.Rect(pad_x + 4 * (w_btn + 5), btn_y, w_btn, 24)},
+            {"id": "play_pause", "label": "START",   "rect": pygame.Rect(pad_x, btn_y, w_btn + 8, 30)},
+            {"id": "step",       "label": "STEP +1", "rect": pygame.Rect(pad_x + w_btn + 13, btn_y, w_btn - 2, 30)},
+            {"id": "undo",       "label": "UNDO",    "rect": pygame.Rect(pad_x + 2 * w_btn + 16, btn_y, w_btn - 2, 30)},
+            {"id": "restart",    "label": "RESET",   "rect": pygame.Rect(pad_x + 3 * w_btn + 19, btn_y, w_btn - 2, 30)},
+            {"id": "next_map",   "label": "MAP >>",  "rect": pygame.Rect(pad_x + 4 * w_btn + 22, btn_y, w_btn - 2, 30)},
         ]
 
-        # Row 2: Speed Toggle
-        s_y = btn_y + 28
+        # Row 2: Speed Toggles (Slower, intuitive defaults)
+        s_y = btn_y + 36
         sw_btn = (card_w - 18) // 4
         self.speed_buttons = [
-            {"id": "speed_05", "label": "0.5x",   "rect": pygame.Rect(pad_x, s_y, sw_btn, 22), "val": 0.5},
-            {"id": "speed_1",  "label": "1.0x",   "rect": pygame.Rect(pad_x + sw_btn + 6, s_y, sw_btn, 22), "val": 1.0},
-            {"id": "speed_2",  "label": "2.0x",   "rect": pygame.Rect(pad_x + 2 * (sw_btn + 6), s_y, sw_btn, 22), "val": 2.0},
-            {"id": "speed_10", "label": "TURBO",  "rect": pygame.Rect(pad_x + 3 * (sw_btn + 6), s_y, sw_btn, 22), "val": 10.0},
+            {"id": "speed_05", "label": "0.5x Slow",   "rect": pygame.Rect(pad_x, s_y, sw_btn, 25), "val": 0.5},
+            {"id": "speed_1",  "label": "1.0x Normal", "rect": pygame.Rect(pad_x + sw_btn + 6, s_y, sw_btn, 25), "val": 1.0},
+            {"id": "speed_2",  "label": "2.0x Fast",   "rect": pygame.Rect(pad_x + 2 * (sw_btn + 6), s_y, sw_btn, 25), "val": 2.0},
+            {"id": "speed_4",  "label": "4.0x Turbo",  "rect": pygame.Rect(pad_x + 3 * (sw_btn + 6), s_y, sw_btn, 25), "val": 4.0},
         ]
 
     def set_speed(self, multiplier: float) -> None:
         """Sets game execution speed multiplier."""
         self.speed_multiplier = float(multiplier)
 
+    def reset_match_wait_state(self) -> None:
+        """Resets playback state to wait for the user to click START."""
+        self.is_paused = True
+        self.match_started = False
+        self.human_queues = {0: None, 1: None}
+        self.human_action_queued = None
+
     def add_combat_log(self, text: str, color: Tuple[int, int, int] = (220, 230, 245)) -> None:
-        """Appends a telemetry log event to the tactical sensor feed."""
+        """Appends a log event to the match log feed."""
         self.combat_logs.append({"text": text, "color": color})
-        if len(self.combat_logs) > 8:
+        if len(self.combat_logs) > 4:
             self.combat_logs.pop(0)
 
     def add_hit_effect(self, x: int, y: int) -> None:
         """Triggers an animated explosion effect at cell (x, y)."""
-        self.explosions.append({"x": x, "y": y, "frame": 0, "max_frames": 10})
-        self.damage_flashes[f"{x},{y}"] = 8
-        self.add_combat_log(f"[IMPACT] Shell hit target at ({x}, {y})", (255, 120, 80))
+        self.explosions.append({"x": x, "y": y, "frame": 0, "max_frames": 12})
+        self.damage_flashes[f"{x},{y}"] = 10
+        self.add_combat_log(f"[HIT] Target hit at cell ({x}, {y}) (-1 HP)", (255, 130, 90))
 
     def add_muzzle_flash(self, x: int, y: int, direction: Direction) -> None:
         """Triggers a muzzle flash effect when tank fires."""
-        self.muzzle_flashes.append({"x": x, "y": y, "dir": direction, "frame": 0, "max_frames": 6})
-        self.add_combat_log(f"[FIRE] Cannon discharged facing {direction.name}", (255, 200, 100))
+        self.muzzle_flashes.append({"x": x, "y": y, "dir": direction, "frame": 0, "max_frames": 8})
 
     def add_tank_track(self, x: int, y: int, direction: Direction) -> None:
         """Leaves fading track treads at the cell where a tank moved."""
@@ -297,7 +384,83 @@ class TankGameGUI:
         if len(self.tracks) > 60:
             self.tracks.pop(0)
 
-    def handle_events(self, active_player_is_human: bool = False) -> bool:
+    def _route_human_key(
+        self,
+        key: int,
+        current_pid: int,
+        p0_is_human: bool,
+        p1_is_human: bool
+    ) -> None:
+        """
+        Routes keyboard actions cleanly for 1-Human vs AI or 2-Human PvP:
+        - In 2-Human PvP (p0_is_human and p1_is_human):
+          * Player 0 (Blue) uses Left Keyboard: W/A/S/D to move, SPACE/F to Fire, Q/E to Stay.
+          * Player 1 (Red) uses Right Keyboard: Arrow Keys to move, ENTER/K/SLASH to Fire, RSHIFT/M to Stay.
+          * Each player's input goes into their own queue (human_queues[0] or human_queues[1]) so simultaneous
+            inputs never collide or get lost!
+        - In 1-Human vs AI:
+          * The human player can use EITHER WASD or Arrow keys, SPACE/F/ENTER to Fire, Q/X to Stay.
+        """
+        both_humans = p0_is_human and p1_is_human
+
+        # Player 0 Dedicated Keyset (Left side of keyboard)
+        p0_map = {
+            pygame.K_w: Action.MOVE_UP,
+            pygame.K_s: Action.MOVE_DOWN,
+            pygame.K_a: Action.MOVE_LEFT,
+            pygame.K_d: Action.MOVE_RIGHT,
+            pygame.K_f: Action.FIRE,
+            pygame.K_SPACE: Action.FIRE,
+            pygame.K_q: Action.STAY,
+            pygame.K_x: Action.STAY,
+        }
+
+        # Player 1 Dedicated Keyset (Right side of keyboard)
+        p1_map = {
+            pygame.K_UP: Action.MOVE_UP,
+            pygame.K_DOWN: Action.MOVE_DOWN,
+            pygame.K_LEFT: Action.MOVE_LEFT,
+            pygame.K_RIGHT: Action.MOVE_RIGHT,
+            pygame.K_RETURN: Action.FIRE,
+            pygame.K_KP_ENTER: Action.FIRE,
+            pygame.K_k: Action.FIRE,
+            pygame.K_SLASH: Action.FIRE,
+            pygame.K_RSHIFT: Action.STAY,
+            pygame.K_m: Action.STAY,
+            pygame.K_PERIOD: Action.STAY,
+        }
+
+        if both_humans:
+            if key in p0_map:
+                self.human_queues[0] = p0_map[key]
+            elif key in p1_map:
+                self.human_queues[1] = p1_map[key]
+        else:
+            target_pid = 0 if p0_is_human else (1 if p1_is_human else current_pid)
+            if key in p0_map:
+                self.human_queues[target_pid] = p0_map[key]
+            elif key in p1_map:
+                self.human_queues[target_pid] = p1_map[key]
+
+    def get_queued_human_action(self, pid: int) -> Optional[Action]:
+        """Retrieves and clears the queued action for human player `pid`."""
+        if self.human_queues.get(pid) is not None:
+            act = self.human_queues[pid]
+            self.human_queues[pid] = None
+            return act
+        if self.human_action_queued is not None:
+            act = self.human_action_queued
+            self.human_action_queued = None
+            return act
+        return None
+
+    def handle_events(
+        self,
+        active_player_is_human: bool = False,
+        current_pid: int = 0,
+        p0_is_human: bool = False,
+        p1_is_human: bool = False
+    ) -> bool:
         """Processes mouse clicks, keyboard controls, and window events."""
         if not PYGAME_AVAILABLE or self.screen is None:
             return True
@@ -306,6 +469,9 @@ class TankGameGUI:
         self.undo_requested = False
         self.restart_requested = False
         self.map_requested = False
+        self.map_prev_requested = False
+
+        any_human = p0_is_human or p1_is_human or active_player_is_human
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -314,27 +480,28 @@ class TankGameGUI:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False
-                elif event.key == pygame.K_SPACE:
-                    if not active_player_is_human:
-                        self.is_paused = not self.is_paused
-                    else:
-                        self.human_action_queued = Action.FIRE
-                elif event.key == pygame.K_RETURN:
-                    if not active_player_is_human:
-                        self.step_requested = True
-                        self.is_paused = True
-                    else:
-                        self.human_action_queued = Action.FIRE
-                elif event.key == pygame.K_s and not active_player_is_human:
-                    self.step_requested = True
-                    self.is_paused = True
+                elif event.key == pygame.K_p:
+                    # Dedicated Pause/Resume hotkey that works in all modes
+                    self.is_paused = not self.is_paused
+                    if not self.is_paused:
+                        self.match_started = True
+                elif event.key == pygame.K_SPACE and (not any_human or not self.match_started or self.is_paused):
+                    # Pressing SPACE when waiting to start or in AI mode toggles Start/Pause
+                    self.is_paused = not self.is_paused
+                    if not self.is_paused:
+                        self.match_started = True
                 elif event.key in (pygame.K_u, pygame.K_z, pygame.K_BACKSPACE):
                     self.undo_requested = True
                     self.is_paused = True
                 elif event.key == pygame.K_r:
                     self.restart_requested = True
-                elif event.key == pygame.K_m:
-                    self.map_requested = True
+                elif event.key == pygame.K_m and not (p1_is_human and self.match_started and not self.is_paused):
+                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                        self.map_prev_requested = True
+                    else:
+                        self.map_requested = True
+                elif event.key == pygame.K_n and not (any_human and self.match_started and not self.is_paused):
+                    self.map_prev_requested = True
                 elif event.key == pygame.K_1:
                     self.set_speed(0.5)
                 elif event.key == pygame.K_2:
@@ -342,25 +509,43 @@ class TankGameGUI:
                 elif event.key == pygame.K_3:
                     self.set_speed(2.0)
                 elif event.key == pygame.K_4:
-                    self.set_speed(10.0)
+                    self.set_speed(4.0)
+                else:
+                    # If match is running and human player(s) are active, route movement/fire keys
+                    if any_human and self.match_started and not self.is_paused:
+                        self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
+                    elif not any_human and event.key in (pygame.K_s, pygame.K_RETURN):
+                        self.step_requested = True
+                        self.is_paused = True
+                        self.match_started = True
 
-                # Human Player Keyboard Controls
-                if active_player_is_human:
-                    if event.key in (pygame.K_w, pygame.K_UP):
-                        self.human_action_queued = Action.MOVE_UP
-                    elif event.key in (pygame.K_s, pygame.K_DOWN):
-                        self.human_action_queued = Action.MOVE_DOWN
-                    elif event.key in (pygame.K_a, pygame.K_LEFT):
-                        self.human_action_queued = Action.MOVE_LEFT
-                    elif event.key in (pygame.K_d, pygame.K_RIGHT):
-                        self.human_action_queued = Action.MOVE_RIGHT
-                    elif event.key in (pygame.K_f, pygame.K_j):
-                        self.human_action_queued = Action.FIRE
-                    elif event.key in (pygame.K_x, pygame.K_c):
-                        self.human_action_queued = Action.STAY
+                # Also handle SPACE for firing when match IS started and not paused
+                if event.key == pygame.K_SPACE and any_human and self.match_started and not self.is_paused:
+                    self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
                 mx, my = event.pos
+
+                # Top-right Map Badge click (Left-click = Next Map, Right-click = Prev Map)
+                if self.map_badge_rect and self.map_badge_rect.collidepoint(mx, my):
+                    if event.button == 3:
+                        self.map_prev_requested = True
+                    else:
+                        self.map_requested = True
+                    return True
+
+                if event.button == 3:
+                    for btn in self.buttons:
+                        if btn["id"] == "next_map" and btn["rect"].collidepoint(mx, my):
+                            self.map_prev_requested = True
+                    continue
+
+                # Check floating START banner on battlefield
+                if not self.match_started and self.start_banner_rect and self.start_banner_rect.collidepoint(mx, my):
+                    self.match_started = True
+                    self.is_paused = False
+                    self.add_combat_log("[START] Match started! Tanks engaging.", (46, 204, 113))
+                    return True
 
                 # Top action buttons
                 for btn in self.buttons:
@@ -368,9 +553,15 @@ class TankGameGUI:
                         b_id = btn["id"]
                         if b_id == "play_pause":
                             self.is_paused = not self.is_paused
+                            if not self.is_paused:
+                                self.match_started = True
+                                self.add_combat_log("[START] Match running.", (46, 204, 113))
+                            else:
+                                self.add_combat_log("[PAUSE] Match paused.", (245, 190, 35))
                         elif b_id == "step":
                             self.step_requested = True
                             self.is_paused = True
+                            self.match_started = True
                         elif b_id == "undo":
                             self.undo_requested = True
                             self.is_paused = True
@@ -387,7 +578,10 @@ class TankGameGUI:
                 # On-screen D-Pad buttons for human
                 for dbtn in self.dpad_buttons:
                     if dbtn["rect"].collidepoint(mx, my):
-                        self.human_action_queued = dbtn["action"]
+                        if not self.match_started or self.is_paused:
+                            self.match_started = True
+                            self.is_paused = False
+                        self.human_queues[current_pid] = dbtn["action"]
 
                 # Algorithm & Depth selectors
                 self._handle_selector_clicks(mx, my)
@@ -396,15 +590,12 @@ class TankGameGUI:
 
     def _handle_selector_clicks(self, mx: int, my: int) -> None:
         """Handles clicking algorithm switchers [<] [>] and depth [-] [+]."""
-        # P0 Algorithm Prev/Next
         if hasattr(self, "p0_algo_prev_rect") and self.p0_algo_prev_rect.collidepoint(mx, my):
             self.p0_algo_idx = (self.p0_algo_idx - 1) % len(AGENT_PRESETS)
             self.agent_changed = True
         elif hasattr(self, "p0_algo_next_rect") and self.p0_algo_next_rect.collidepoint(mx, my):
             self.p0_algo_idx = (self.p0_algo_idx + 1) % len(AGENT_PRESETS)
             self.agent_changed = True
-
-        # P0 Depth Dec/Inc
         elif hasattr(self, "p0_depth_dec_rect") and self.p0_depth_dec_rect.collidepoint(mx, my):
             if self.p0_depth > 1:
                 self.p0_depth -= 1
@@ -413,16 +604,12 @@ class TankGameGUI:
             if self.p0_depth < 5:
                 self.p0_depth += 1
                 self.agent_changed = True
-
-        # P1 Algorithm Prev/Next
         elif hasattr(self, "p1_algo_prev_rect") and self.p1_algo_prev_rect.collidepoint(mx, my):
             self.p1_algo_idx = (self.p1_algo_idx - 1) % len(AGENT_PRESETS)
             self.agent_changed = True
         elif hasattr(self, "p1_algo_next_rect") and self.p1_algo_next_rect.collidepoint(mx, my):
             self.p1_algo_idx = (self.p1_algo_idx + 1) % len(AGENT_PRESETS)
             self.agent_changed = True
-
-        # P1 Depth Dec/Inc
         elif hasattr(self, "p1_depth_dec_rect") and self.p1_depth_dec_rect.collidepoint(mx, my):
             if self.p1_depth > 1:
                 self.p1_depth -= 1
@@ -462,6 +649,15 @@ class TankGameGUI:
         elif hasattr(agent1, "max_depth"):
             self.p1_depth = agent1.max_depth
 
+    def _pump_during_animation(self, current_pid: int, agent0: BaseAgent, agent1: BaseAgent) -> None:
+        """Captures human keyboard inputs during animations so 2-Human PvP feels super responsive."""
+        p0_h = getattr(agent0, "is_human", False)
+        p1_h = getattr(agent1, "is_human", False)
+        for event in pygame.event.get(pygame.KEYDOWN):
+            if p0_h or p1_h:
+                self._route_human_key(event.key, current_pid, p0_h, p1_h)
+        pygame.event.pump()
+
     def animate_turn(
         self,
         state: GameState,
@@ -470,122 +666,152 @@ class TankGameGUI:
         agent1: BaseAgent
     ) -> GameState:
         """
-        Executes a turn with realistic cell-by-cell bullet flight animations.
-        Matches GameRules.apply_action() physics exactly while providing
-        fluid visual feedback.
+        Executes a turn with smooth tank movement interpolation and cell-by-cell bullet flight.
+        Paced so the user can visually observe every tank maneuver and projectile collision.
         """
         next_state = state.clone()
         player_id = next_state.current_player
         tank = next_state.tanks.get(player_id)
+        cs = self.cell_size
 
-        # Phase 1: Apply Tank Action (Move, Fire, Stay)
+        # Phase 1: Apply Tank Action with smooth visual interpolation
         if action == Action.FIRE:
             if tank and tank.is_alive:
                 self.add_muzzle_flash(tank.x, tank.y, tank.direction)
             GameRules._fire_bullet(next_state, player_id)
+            fire_pause_frames = max(2, int(8 / self.speed_multiplier))
+            for _ in range(fire_pause_frames):
+                self.render(next_state, agent0, agent1, is_interpolating=True)
+                self._pump_during_animation(1 - player_id, agent0, agent1)
+                self.clock.tick(self.fps)
+
         elif action == Action.STAY:
-            pass
+            stay_frames = max(2, int(6 / self.speed_multiplier))
+            for _ in range(stay_frames):
+                self.render(next_state, agent0, agent1, is_interpolating=True)
+                self._pump_during_animation(1 - player_id, agent0, agent1)
+                self.clock.tick(self.fps)
+
         else:
             direction = Action.get_move_direction(action)
             if direction and tank and tank.is_alive:
-                self.add_tank_track(tank.x, tank.y, tank.direction)
+                old_x, old_y = tank.x, tank.y
+                self.add_tank_track(old_x, old_y, tank.direction)
                 GameRules._move_tank(next_state, player_id, direction)
+                new_x, new_y = tank.x, tank.y
 
-        # Phase 2: Realistic Cell-by-Cell Bullet Flight
-        if self.speed_multiplier >= 10.0:
-            GameRules.step_bullets(next_state)
-        else:
-            frames_per_cell = max(1, int(6 / self.speed_multiplier))
+                # Smoothly glide the tank from (old_x, old_y) to (new_x, new_y)
+                move_frames = max(3, int(14 / self.speed_multiplier))
+                start_px, start_py = old_x * cs, old_y * cs
+                end_px, end_py = new_x * cs, new_y * cs
 
-            for _ in range(Bullet.SPEED):
-                active_bullets = [b for b in next_state.bullets if b.is_active]
-                if not active_bullets:
-                    break
+                for f in range(1, move_frames + 1):
+                    alpha = f / move_frames
+                    cur_px = int(start_px + (end_px - start_px) * alpha)
+                    cur_py = int(start_py + (end_py - start_py) * alpha)
+                    self.animated_tank_override[player_id] = (cur_px, cur_py, tank.direction)
+                    self.render(next_state, agent0, agent1, is_interpolating=True)
+                    self._pump_during_animation(1 - player_id, agent0, agent1)
+                    self.clock.tick(self.fps)
 
-                bullet_paths = []
-                for b in active_bullets:
-                    dx, dy = b.direction.value
-                    start_px = b.x * self.cell_size + self.cell_size // 2
-                    start_py = b.y * self.cell_size + self.cell_size // 2
-                    target_x = b.x + dx
-                    target_y = b.y + dy
-                    target_px = target_x * self.cell_size + self.cell_size // 2
-                    target_py = target_y * self.cell_size + self.cell_size // 2
-                    bullet_paths.append({
-                        "bullet": b,
-                        "start": (start_px, start_py),
-                        "target": (target_px, target_py),
-                        "target_cell": (target_x, target_y),
-                        "dir": b.direction,
-                        "owner": b.owner_id
+                self.animated_tank_override.clear()
+
+        # Phase 2: Realistic Cell-by-Cell Bullet Flight (3 cells per cycle)
+        frames_per_cell = max(3, int(12 / self.speed_multiplier))
+
+        for _ in range(Bullet.SPEED):
+            active_bullets = [b for b in next_state.bullets if b.is_active]
+            if not active_bullets:
+                break
+
+            bullet_paths = []
+            for b in active_bullets:
+                dx, dy = b.direction.value
+                start_px = b.x * cs + cs // 2
+                start_py = b.y * cs + cs // 2
+                target_x = b.x + dx
+                target_y = b.y + dy
+                target_px = target_x * cs + cs // 2
+                target_py = target_y * cs + cs // 2
+                bullet_paths.append({
+                    "bullet": b,
+                    "start": (start_px, start_py),
+                    "target": (target_px, target_py),
+                    "target_cell": (target_x, target_y),
+                    "dir": b.direction,
+                    "owner": b.owner_id
+                })
+
+            for f in range(1, frames_per_cell + 1):
+                alpha = f / frames_per_cell
+                self.animated_bullets = []
+                for bp in bullet_paths:
+                    curr_x = int(bp["start"][0] + (bp["target"][0] - bp["start"][0]) * alpha)
+                    curr_y = int(bp["start"][1] + (bp["target"][1] - bp["start"][1]) * alpha)
+                    self.animated_bullets.append({
+                        "px": curr_x,
+                        "py": curr_y,
+                        "dir": bp["dir"],
+                        "owner": bp["owner"]
                     })
 
-                # Interpolate smoothly between cells
-                for f in range(1, frames_per_cell + 1):
-                    alpha = f / frames_per_cell
-                    self.animated_bullets = []
-                    for bp in bullet_paths:
-                        curr_x = int(bp["start"][0] + (bp["target"][0] - bp["start"][0]) * alpha)
-                        curr_y = int(bp["start"][1] + (bp["target"][1] - bp["start"][1]) * alpha)
-                        self.animated_bullets.append({
-                            "px": curr_x,
-                            "py": curr_y,
-                            "dir": bp["dir"],
-                            "owner": bp["owner"]
-                        })
+                self.render(next_state, agent0, agent1, is_interpolating=True)
+                self._pump_during_animation(1 - player_id, agent0, agent1)
+                self.clock.tick(self.fps)
 
-                    self.render(next_state, agent0, agent1, is_interpolating=True)
-                    pygame.event.pump()
+            self.animated_bullets.clear()
 
-                self.animated_bullets.clear()
+            # Check cell arrival collisions (Wall, Tank, Base)
+            for bp in bullet_paths:
+                b = bp["bullet"]
+                tx, ty = bp["target_cell"]
+                b.x = tx
+                b.y = ty
 
-                # At cell arrival: Advance coordinates and perform collision check
-                for bp in bullet_paths:
-                    b = bp["bullet"]
-                    tx, ty = bp["target_cell"]
-                    b.x = tx
-                    b.y = ty
+                if not (0 <= b.x < next_state.width and 0 <= b.y < next_state.height):
+                    b.is_active = False
+                    continue
 
-                    if not (0 <= b.x < next_state.width and 0 <= b.y < next_state.height):
+                hit = False
+                if (b.x, b.y) in next_state.walls:
+                    w = next_state.walls[(b.x, b.y)]
+                    if w.is_alive:
+                        w.take_damage(1)
                         b.is_active = False
-                        continue
+                        hit = True
+                        self.add_hit_effect(b.x, b.y)
 
-                    hit = False
-                    # Check collision with wall
-                    if (b.x, b.y) in next_state.walls:
-                        w = next_state.walls[(b.x, b.y)]
-                        if w.is_alive:
-                            w.take_damage(1)
+                if not hit:
+                    for target_tank in next_state.tanks.values():
+                        if (target_tank.is_alive and
+                            target_tank.x == b.x and
+                            target_tank.y == b.y and
+                            target_tank.player_id != b.owner_id):
+                            target_tank.take_damage(1)
                             b.is_active = False
                             hit = True
                             self.add_hit_effect(b.x, b.y)
+                            break
 
-                    # Check collision with tank
-                    if not hit:
-                        for target_tank in next_state.tanks.values():
-                            if (target_tank.is_alive and
-                                target_tank.x == b.x and
-                                target_tank.y == b.y and
-                                target_tank.player_id != b.owner_id):
-                                target_tank.take_damage(1)
-                                b.is_active = False
-                                hit = True
-                                self.add_hit_effect(b.x, b.y)
-                                break
+                if not hit:
+                    for target_base in next_state.bases.values():
+                        if (target_base.is_alive and
+                            target_base.x == b.x and
+                            target_base.y == b.y):
+                            target_base.take_damage(1)
+                            b.is_active = False
+                            hit = True
+                            self.add_hit_effect(b.x, b.y)
+                            break
 
-                    # Check collision with base
-                    if not hit:
-                        for target_base in next_state.bases.values():
-                            if (target_base.is_alive and
-                                target_base.x == b.x and
-                                target_base.y == b.y):
-                                target_base.take_damage(1)
-                                b.is_active = False
-                                hit = True
-                                self.add_hit_effect(b.x, b.y)
-                                break
+            next_state.bullets = [b for b in next_state.bullets if b.is_active]
 
-                next_state.bullets = [b for b in next_state.bullets if b.is_active]
+        # Animate any hit explosions briefly so the user sees the impact
+        if self.explosions:
+            for _ in range(max(2, int(6 / self.speed_multiplier))):
+                self.render(next_state, agent0, agent1, is_interpolating=True)
+                self._pump_during_animation(1 - player_id, agent0, agent1)
+                self.clock.tick(self.fps)
 
         # Phase 3: Cleanup dead walls and Advance turn
         dead_walls = [pos for pos, wall in next_state.walls.items() if not wall.is_alive]
@@ -605,7 +831,7 @@ class TankGameGUI:
         agent1: BaseAgent,
         is_interpolating: bool = False
     ) -> None:
-        """Main draw routine rendering battlefield, entities, particles, and HUD."""
+        """Main draw routine rendering battlefield, entities, particles, and clean HUD."""
         if not PYGAME_AVAILABLE or self.screen is None:
             return
 
@@ -616,7 +842,7 @@ class TankGameGUI:
         self._render_battlefield(state)
 
         # 2. Render Entities (Walls, Bases, Tanks, Foliage)
-        self._render_entities(state)
+        self._render_entities(state, agent0, agent1)
 
         # 3. Render In-Flight Bullets
         self._render_bullets(state)
@@ -624,14 +850,20 @@ class TankGameGUI:
         # 4. Render Particles (Treads, Muzzle Flashes, Hit Explosions)
         self._render_particles()
 
-        # 5. Render Tactical Sensor Feed & Event Log underneath grid
+        # 5. Render Ready-to-Start Overlay if match hasn't started yet
+        if not self.match_started and not state.is_terminal():
+            self._render_start_overlay()
+        else:
+            self.start_banner_rect = None
+
+        # 6. Render Clean Match Action Log underneath grid
         self._render_combat_log(state)
 
-        # 6. Render Game-Over Modal if Terminal
+        # 7. Render Game-Over Modal if Terminal
         if state.is_terminal():
             self._render_game_over_banner(state, agent0, agent1)
 
-        # 7. Render Tactical Sidebar HUD
+        # 8. Render Redesigned Sidebar HUD
         self._render_hud(state, agent0, agent1)
 
         # Update damage flashes
@@ -644,13 +876,31 @@ class TankGameGUI:
         if not is_interpolating:
             self.clock.tick(self.fps)
 
+    def _render_start_overlay(self) -> None:
+        """Draws a clickable 'READY TO START' banner in the center of the battlefield before match start."""
+        bw = 380
+        bh = 46
+        bx = (self.board_w - bw) // 2
+        by = (self.board_h - bh) // 2
+
+        self.start_banner_rect = pygame.Rect(bx, by, bw, bh)
+        mx, my = pygame.mouse.get_pos()
+        is_hover = self.start_banner_rect.collidepoint(mx, my)
+
+        bg_col = (28, 145, 90) if is_hover else (20, 115, 72)
+        pygame.draw.rect(self.screen, (10, 14, 22), pygame.Rect(bx + 3, by + 3, bw, bh), border_radius=8)
+        pygame.draw.rect(self.screen, bg_col, self.start_banner_rect, border_radius=8)
+        pygame.draw.rect(self.screen, (80, 235, 145), self.start_banner_rect, 2, border_radius=8)
+
+        txt = self.font_large.render("CLICK HERE OR [START] TO BEGIN MATCH", True, (255, 255, 255))
+        self.screen.blit(txt, (bx + (bw - txt.get_width()) // 2, by + (bh - txt.get_height()) // 2))
+
     def _render_battlefield(self, state: GameState) -> None:
         """Draws textured sand terrain tiles with subtle tactical coordinates."""
         cs = self.cell_size
         sand_img = self.sprites.get("tile_sand")
         sand_img2 = self.sprites.get("tile_sand2")
 
-        # Outer border frame
         frame_rect = pygame.Rect(0, 0, self.board_w, self.board_h)
         pygame.draw.rect(self.screen, self.COLOR_BG, frame_rect)
 
@@ -675,7 +925,7 @@ class TankGameGUI:
                     self.screen.blit(lbl, (3, py + 3))
 
     def _render_combat_log(self, state: GameState) -> None:
-        """Renders the tactical combat log and sensor feed under the battlefield grid."""
+        """Renders a clean, readable 4-line match action log underneath the battlefield."""
         log_x = 0
         log_y = self.board_h
         log_w = self.board_w
@@ -684,32 +934,20 @@ class TankGameGUI:
         if log_h <= 10:
             return
 
-        # Container
-        pygame.draw.rect(self.screen, (13, 16, 23), (log_x, log_y, log_w, log_h))
+        pygame.draw.rect(self.screen, (14, 18, 26), (log_x, log_y, log_w, log_h))
         pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (log_x, log_y), (log_w, log_y), 2)
 
-        # Header Bar
-        hdr_rect = pygame.Rect(log_x + 8, log_y + 6, log_w - 16, 20)
-        pygame.draw.rect(self.screen, (20, 26, 38), hdr_rect, border_radius=3)
-        pygame.draw.rect(self.screen, (34, 44, 62), hdr_rect, 1, border_radius=3)
+        hdr_title = self.font_metric_lbl.render("RECENT MATCH EVENTS & TURN LOG", True, self.COLOR_GOLD)
+        self.screen.blit(hdr_title, (log_x + 14, log_y + 8))
 
-        h_title = self.font_metric_lbl.render("TACTICAL SENSOR FEED & COMBAT EVENT LOG", True, self.COLOR_GOLD)
-        self.screen.blit(h_title, (hdr_rect.x + 8, hdr_rect.y + 3))
-
-        live_tag = self.font_coord.render("● LIVE FEED", True, self.COLOR_EMERALD)
-        self.screen.blit(live_tag, (hdr_rect.x + hdr_rect.width - live_tag.get_width() - 8, hdr_rect.y + 3))
-
-        # Render Log lines
-        line_y = log_y + 32
-        for item in self.combat_logs[-8:]:
-            s_txt = item["text"]
-            s_col = item["color"]
-            line_surf = self.font_coord.render(s_txt, True, s_col)
+        line_y = log_y + 28
+        for item in self.combat_logs[-4:]:
+            line_surf = self.font.render(item["text"], True, item["color"])
             self.screen.blit(line_surf, (log_x + 14, line_y))
             line_y += 20
 
-    def _render_entities(self, state: GameState) -> None:
-        """Renders bases, walls, tanks, and foliage."""
+    def _render_entities(self, state: GameState, agent0: BaseAgent = None, agent1: BaseAgent = None) -> None:
+        """Renders bases, walls, tanks (with smooth position override and turn indicator), and foliage."""
         cs = self.cell_size
 
         tank_angle_map = {
@@ -719,7 +957,7 @@ class TankGameGUI:
             Direction.RIGHT: 90,
         }
 
-        # 1. Base Command Outposts
+        # 1. Base Command Citadels ("Cứ điểm")
         for pid, base in state.bases.items():
             if base.is_alive:
                 bx = base.x * cs
@@ -727,38 +965,53 @@ class TankGameGUI:
                 center_x = bx + cs // 2
                 center_y = by + cs // 2
                 base_color = self.COLOR_P0_PRIMARY if pid == 0 else self.COLOR_P1_PRIMARY
+                hp_ratio = base.hp / 9.0
+                flash_active = f"{base.x},{base.y}" in self.damage_flashes
 
-                # Radar pulse
-                pulse_r = int((self.anim_tick % 24) / 24 * (cs // 2 + 2))
-                radar_surf = pygame.Surface((cs + 8, cs + 8), pygame.SRCALPHA)
-                pygame.draw.circle(radar_surf, (*base_color, 45), (cs // 2 + 4, cs // 2 + 4), cs // 2 - 2)
-                if pulse_r > 4:
-                    pygame.draw.circle(radar_surf, (*base_color, 80), (cs // 2 + 4, cs // 2 + 4), pulse_r, 2)
-                self.screen.blit(radar_surf, (bx - 4, by - 4))
+                # Animated perimeter shield glow around the Citadel
+                pulse_a = int(65 + 45 * math.sin(self.anim_tick * 0.12))
+                shield_col = (
+                    base_color if hp_ratio > 0.55
+                    else (self.COLOR_HP_YELLOW if hp_ratio > 0.3 else self.COLOR_HP_RED)
+                )
+                aura_surf = pygame.Surface((cs, cs), pygame.SRCALPHA)
+                pygame.draw.rect(aura_surf, (*shield_col, pulse_a), (0, 0, cs, cs), border_radius=8)
+                self.screen.blit(aura_surf, (bx, by))
 
-                # Metallic base platform
-                pygame.draw.rect(self.screen, (32, 40, 54), (bx + 2, by + 2, cs - 4, cs - 4), border_radius=8)
-                pygame.draw.rect(self.screen, base_color, (bx + 2, by + 2, cs - 4, cs - 4), 2, border_radius=8)
-
+                # Citadel Sprite (Fortified Bastion with 4 Corner Turrets & Central Golden Star)
                 base_key = f"base_{pid}"
                 if base_key in self.sprites and self.sprites[base_key]:
-                    self.screen.blit(self.sprites[base_key], (bx + 3, by + 3))
+                    self.screen.blit(self.sprites[base_key], (bx + 2, by + 2))
                 else:
+                    pygame.draw.rect(self.screen, (28, 36, 50), (bx + 2, by + 2, cs - 4, cs - 4), border_radius=6)
                     pygame.draw.circle(self.screen, (20, 60, 110) if pid == 0 else (120, 25, 25), (center_x, center_y), cs // 2 - 5)
 
-                hq_badge = self.font_badge.render(f"HQ {pid}", True, (255, 255, 255))
-                self.screen.blit(hq_badge, (center_x - hq_badge.get_width() // 2, center_y - hq_badge.get_height() // 2))
+                # Outer armored frame
+                pygame.draw.rect(self.screen, shield_col, (bx + 1, by + 1, cs - 2, cs - 2), 2, border_radius=7)
 
-                # Segmented 9-cell HP bar
-                self._draw_segmented_hp_bar(bx + 4, by - 2, base.hp, 9, seg_w=3, seg_h=4, color=base_color)
+                if flash_active:
+                    flash_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
+                    flash_surf.fill((255, 255, 255, 135))
+                    self.screen.blit(flash_surf, (bx + 2, by + 2))
 
-        # 2. Destructible Walls
+                # Unclipped Top 9-Plate Citadel Shield Bar (3x3 Bastion Tiers inside top edge of cell)
+                self._draw_citadel_board_hp_bar(bx + 3, by + 2, cs - 6, base.hp, 9, base_color)
+
+                # Sleek Bottom Tactical Crest Plate ("HQ 0" / "HQ 1") leaving Central Star unobstructed
+                hq_tag = self.font_coord.render(f"HQ {pid}", True, (255, 255, 255))
+                tag_w = hq_tag.get_width() + 8
+                tag_h = 12
+                tag_rect = pygame.Rect(center_x - tag_w // 2, by + cs - tag_h - 1, tag_w, tag_h)
+                pygame.draw.rect(self.screen, (14, 19, 28), tag_rect, border_radius=3)
+                pygame.draw.rect(self.screen, shield_col, tag_rect, 1, border_radius=3)
+                self.screen.blit(hq_tag, (tag_rect.centerx - hq_tag.get_width() // 2, tag_rect.y - 1))
+
+        # 2. Destructible Walls (3 HP Metal, 2 HP Wood Crate, 1 HP Sandbag)
         for (wx, wy), wall in state.walls.items():
             if wall.is_alive:
                 rx = wx * cs + 2
                 ry = wy * cs + 2
                 sprite_key = f"wall_{wall.hp}"
-
                 flash_active = f"{wx},{wy}" in self.damage_flashes
 
                 if sprite_key in self.sprites and self.sprites[sprite_key]:
@@ -772,25 +1025,42 @@ class TankGameGUI:
                     flash_surf.fill((255, 255, 255, 120))
                     self.screen.blit(flash_surf, (rx, ry))
 
-                badge = self.font_small.render(str(wall.hp), True, (255, 255, 255))
-                self.screen.blit(badge, (rx + cs - 14, ry + cs - 16))
+                # Color-coded mini armor badge for obstacle HP (3=Metal Cyan, 2=Wood Gold, 1=Sandbag Orange)
+                badge_border = (
+                    (90, 200, 255) if wall.hp == 3
+                    else ((245, 195, 45) if wall.hp == 2 else (245, 125, 65))
+                )
+                b_rect = pygame.Rect(rx + cs - 17, ry + cs - 17, 13, 13)
+                pygame.draw.rect(self.screen, (14, 18, 26), b_rect, border_radius=3)
+                pygame.draw.rect(self.screen, badge_border, b_rect, 1, border_radius=3)
+                badge = self.font_coord.render(str(wall.hp), True, badge_border)
+                self.screen.blit(badge, (b_rect.centerx - badge.get_width() // 2, b_rect.centery - badge.get_height() // 2 - 1))
 
         # 3. Tanks
         for pid, tank in state.tanks.items():
             if tank.is_alive:
-                tx = tank.x * cs
-                ty = tank.y * cs
+                if pid in self.animated_tank_override:
+                    tx, ty, t_dir = self.animated_tank_override[pid]
+                else:
+                    tx, ty, t_dir = tank.x * cs, tank.y * cs, tank.direction
+
                 center_x = tx + cs // 2
                 center_y = ty + cs // 2
                 t_color = self.COLOR_P0_PRIMARY if pid == 0 else self.COLOR_P1_PRIMARY
+                is_active_turn = (state.current_player == pid and not state.is_terminal())
 
-                ring_surf = pygame.Surface((cs, cs), pygame.SRCALPHA)
-                pygame.draw.circle(ring_surf, (*t_color, 70), (cs // 2, cs // 2), cs // 2 - 2, 2)
-                self.screen.blit(ring_surf, (tx, ty))
+                # Highlight ring (pulsing when it's this tank's turn)
+                ring_surf = pygame.Surface((cs + 8, cs + 8), pygame.SRCALPHA)
+                if is_active_turn and self.match_started:
+                    pulse_alpha = int(140 + 90 * math.sin(self.anim_tick * 0.15))
+                    pygame.draw.circle(ring_surf, (*t_color, pulse_alpha), (cs // 2 + 4, cs // 2 + 4), cs // 2 + 1, 3)
+                else:
+                    pygame.draw.circle(ring_surf, (*t_color, 75), (cs // 2 + 4, cs // 2 + 4), cs // 2 - 2, 2)
+                self.screen.blit(ring_surf, (tx - 4, ty - 4))
 
                 tank_key = f"tank_{pid}"
                 if tank_key in self.sprites and self.sprites[tank_key]:
-                    angle = tank_angle_map.get(tank.direction, 0)
+                    angle = tank_angle_map.get(t_dir, 0)
                     rot_sprite = pygame.transform.rotate(self.sprites[tank_key], angle)
                     r_rect = rot_sprite.get_rect(center=(center_x, center_y))
                     self.screen.blit(rot_sprite, r_rect.topleft)
@@ -798,6 +1068,16 @@ class TankGameGUI:
                     pygame.draw.circle(self.screen, t_color, (center_x, center_y), cs // 2 - 4)
 
                 self._draw_segmented_hp_bar(tx + 4, ty - 2, tank.hp, 6, seg_w=5, seg_h=4, color=t_color)
+
+                # Floating Turn Indicator for Human Players
+                agent_obj = agent0 if pid == 0 else agent1
+                if is_active_turn and self.match_started and getattr(agent_obj, "is_human", False):
+                    tag_surf = self.font_badge.render(f"P{pid} TURN", True, (255, 255, 255))
+                    tw = tag_surf.get_width() + 8
+                    th = 15
+                    tag_rect = pygame.Rect(center_x - tw // 2, ty + cs - 2, tw, th)
+                    pygame.draw.rect(self.screen, t_color, tag_rect, border_radius=3)
+                    self.screen.blit(tag_surf, (tag_rect.x + 4, tag_rect.y + 1))
 
         # 4. Foliage Canopy
         if hasattr(state, "foliage"):
@@ -876,7 +1156,6 @@ class TankGameGUI:
             Direction.RIGHT: 270,
         }
 
-        # 1. Tank Tread Tracks
         active_tracks = []
         for tr in self.tracks:
             tr["life"] -= 1
@@ -892,7 +1171,6 @@ class TankGameGUI:
                 active_tracks.append(tr)
         self.tracks = active_tracks
 
-        # 2. Muzzle Flashes
         active_flashes = []
         for mf in self.muzzle_flashes:
             mf["frame"] += 1
@@ -911,7 +1189,6 @@ class TankGameGUI:
                 active_flashes.append(mf)
         self.muzzle_flashes = active_flashes
 
-        # 3. Hit Smoke & Fiery Explosions
         active_exp = []
         for exp in self.explosions:
             exp["frame"] += 1
@@ -925,12 +1202,8 @@ class TankGameGUI:
                 if exp_key in self.sprites and self.sprites[exp_key]:
                     self.screen.blit(self.sprites[exp_key], (px, py))
                 else:
-                    smoke_key = f"smoke_{min(3, exp_step)}"
-                    if smoke_key in self.sprites and self.sprites[smoke_key]:
-                        self.screen.blit(self.sprites[smoke_key], (px + 3, py + 3))
-                    else:
-                        r = int((frame_idx / exp["max_frames"]) * (cs // 2))
-                        pygame.draw.circle(self.screen, (255, 120, 30), (px + cs // 2, py + cs // 2), r)
+                    r = int((frame_idx / exp["max_frames"]) * (cs // 2))
+                    pygame.draw.circle(self.screen, (255, 120, 30), (px + cs // 2, py + cs // 2), r)
                 active_exp.append(exp)
         self.explosions = active_exp
 
@@ -938,7 +1211,7 @@ class TankGameGUI:
         self, x: int, y: int, hp: int, max_hp: int,
         seg_w: int, seg_h: int, color
     ) -> None:
-        """Draws discrete battery-style health bar pips above in-game entities."""
+        """Draws discrete health bar pips above in-game entities."""
         gap = 1
         total_w = max_hp * (seg_w + gap) + 2
         pygame.draw.rect(self.screen, (16, 20, 28), (x - 1, y - 1, total_w, seg_h + 2), border_radius=2)
@@ -952,147 +1225,251 @@ class TankGameGUI:
             else:
                 pygame.draw.rect(self.screen, (34, 42, 56), (sx, y, seg_w, seg_h), border_radius=1)
 
-    def _draw_tactical_vitals_bar(
-        self, x: int, y: int, w: int, hp: int, max_hp: int,
-        team_color, title: str, status_text: str
+    def _draw_citadel_board_hp_bar(
+        self, x: int, y: int, total_w: int, hp: int, max_hp: int, color
     ) -> None:
         """
-        Renders a modern power-cell vitals gauge with numeric readouts
-        and discrete battery segments.
+        Draws a fortified 9-plate Citadel shield bar grouped into 3 tiers of 3 HP
+        inside the top edge of the Base HQ cell (never clips off-screen at y=0).
         """
-        # Header label line
-        lbl_surf = self.font_metric_lbl.render(title.upper(), True, self.COLOR_TEXT_DIM)
-        self.screen.blit(lbl_surf, (x, y))
+        bar_h = 6
+        pygame.draw.rect(self.screen, (12, 16, 24), (x - 1, y - 1, total_w + 2, bar_h + 2), border_radius=2)
+        pygame.draw.rect(self.screen, (52, 66, 90), (x - 1, y - 1, total_w + 2, bar_h + 2), 1, border_radius=2)
 
-        st_c = team_color if hp > (max_hp // 2) else (self.COLOR_HP_YELLOW if hp > 0 else self.COLOR_HP_RED)
-        st_surf = self.font_coord.render(status_text, True, st_c)
-        self.screen.blit(st_surf, (x + w - st_surf.get_width(), y))
+        ratio = hp / max(1, max_hp)
+        pip_c = color if ratio > 0.55 else (self.COLOR_HP_YELLOW if ratio > 0.3 else self.COLOR_HP_RED)
+        hi_c = (
+            min(255, pip_c[0] + 55),
+            min(255, pip_c[1] + 55),
+            min(255, pip_c[2] + 55),
+        )
 
-        # Battery Bar Container
-        bar_y = y + 13
-        bar_h = 7
-        pygame.draw.rect(self.screen, (12, 16, 24), (x, bar_y, w, bar_h), border_radius=2)
-        pygame.draw.rect(self.screen, (32, 42, 60), (x, bar_y, w, bar_h), 1, border_radius=2)
-
-        # Segmented pips
-        gap = 2
-        seg_w = max(2, (w - 4 - (max_hp - 1) * gap) // max_hp)
-        start_x = x + 2
+        # 9 pips with 1px gap and 3px tier divider after pip 3 and pip 6
+        seg_w = max(2, (total_w - 12) // max_hp)
+        used_w = seg_w * max_hp + 12
+        cur_x = x + (total_w - used_w) // 2
         for i in range(max_hp):
-            px = start_x + i * (seg_w + gap)
-            if px + seg_w > x + w - 2:
-                seg_w = max(1, (x + w - 2) - px)
+            if i in (3, 6):
+                pygame.draw.line(self.screen, self.COLOR_GOLD, (cur_x + 1, y), (cur_x + 1, y + bar_h - 1), 1)
+                cur_x += 3
             if i < hp:
-                ratio = hp / max_hp
-                pip_c = team_color if ratio > 0.5 else (self.COLOR_HP_YELLOW if ratio > 0.25 else self.COLOR_HP_RED)
-                pygame.draw.rect(self.screen, pip_c, (px, bar_y + 1, seg_w, bar_h - 2), border_radius=1)
+                pygame.draw.rect(self.screen, pip_c, (cur_x, y, seg_w, bar_h), border_radius=1)
+                pygame.draw.line(self.screen, hi_c, (cur_x, y), (cur_x + seg_w - 1, y), 1)
             else:
-                pygame.draw.rect(self.screen, (24, 30, 42), (px, bar_y + 1, seg_w, bar_h - 2), border_radius=1)
+                pygame.draw.rect(self.screen, (28, 35, 48), (cur_x, y, seg_w, bar_h), border_radius=1)
+            cur_x += seg_w + 1
 
-    def _draw_metric_chip(
+    def _draw_clean_hp_box(
         self, x: int, y: int, w: int, h: int,
-        label: str, value_str: str, value_color,
-        subtext: Optional[str] = None, progress_pct: Optional[float] = None
+        label: str, hp: int, max_hp: int, color
+    ) -> None:
+        """Draws a clean, armored Tank Health box with 6 beveled armor plates."""
+        box_rect = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, self.COLOR_INSET_BG, box_rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, box_rect, 1, border_radius=6)
+
+        lbl_surf = self.font_metric_lbl.render(label, True, self.COLOR_TEXT_DIM)
+        self.screen.blit(lbl_surf, (x + 8, y + 5))
+
+        ratio = max(0.0, min(1.0, hp / max(1, max_hp)))
+        bar_col = color if ratio > 0.5 else (self.COLOR_HP_YELLOW if ratio > 0.25 else self.COLOR_HP_RED)
+        val_str = f"{hp}/{max_hp} HP" if hp > 0 else "DESTROYED"
+        val_surf = self.font_bold.render(val_str, True, bar_col if hp > 0 else self.COLOR_HP_RED)
+        self.screen.blit(val_surf, (x + w - val_surf.get_width() - 8, y + 4))
+
+        # 6 Segmented Tank Armor Plates
+        bar_x = x + 8
+        bar_y = y + h - 14
+        bar_w = w - 16
+        bar_h = 8
+        pygame.draw.rect(self.screen, (12, 16, 24), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2), border_radius=3)
+
+        gap = 3
+        seg_w = (bar_w - gap * (max_hp - 1)) // max_hp
+        hi_col = (min(255, bar_col[0] + 50), min(255, bar_col[1] + 50), min(255, bar_col[2] + 50))
+        for i in range(max_hp):
+            sx = bar_x + i * (seg_w + gap)
+            sw = seg_w if i < max_hp - 1 else (bar_x + bar_w - sx)
+            if i < hp:
+                pygame.draw.rect(self.screen, bar_col, (sx, bar_y, sw, bar_h), border_radius=2)
+                pygame.draw.line(self.screen, hi_col, (sx + 1, bar_y + 1), (sx + sw - 2, bar_y + 1), 1)
+            else:
+                pygame.draw.rect(self.screen, (26, 33, 46), (sx, bar_y, sw, bar_h), border_radius=2)
+
+    def _draw_citadel_hp_box(
+        self, x: int, y: int, w: int, h: int,
+        hp: int, max_hp: int, color, pid: int = 0
     ) -> None:
         """
-        Renders a recessed digital instrument tile with monospace typography
-        and optional mini progress fill bar.
+        Draws a custom-designed Fortified Command Base ('Cứ điểm') Health Box:
+        - Double-beveled bunker frame with 4 metallic corner bastion brackets
+        - Mini Golden Command Star shield emblem + 'BASE HQ HEALTH' header
+        - Pill-framed HP readout badge
+        - 9-Plate Citadel Armor Bar organized into 3 Bastion Tiers ([■■■ | ■■■ | ■■■])
         """
-        chip_rect = pygame.Rect(x, y, w, h)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BG, chip_rect, border_radius=4)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, chip_rect, 1, border_radius=4)
+        box_rect = pygame.Rect(x, y, w, h)
+        ratio = max(0.0, min(1.0, hp / max(1, max_hp)))
+        bar_col = color if ratio > 0.55 else (self.COLOR_HP_YELLOW if ratio > 0.3 else self.COLOR_HP_RED)
+        border_col = (75, 95, 130) if ratio > 0.55 else bar_col
 
-        # Micro header label
-        lbl_surf = self.font_metric_lbl.render(label, True, (120, 140, 170))
-        self.screen.blit(lbl_surf, (x + 6, y + 4))
+        # 1. Fortified Bunker Background & Inner Frame
+        pygame.draw.rect(self.screen, (13, 18, 28), box_rect, border_radius=6)
+        pygame.draw.rect(self.screen, border_col, box_rect, 1, border_radius=6)
 
-        # Monospace digital value
+        # 2. Four L-Shaped Corner Bastion Brackets (Fortress Reinforcement Accents)
+        blen = 6
+        b_accent = self.COLOR_GOLD if hp > 0 else self.COLOR_HP_RED
+        # Top-Left
+        pygame.draw.line(self.screen, b_accent, (x, y + 2), (x, y + blen), 2)
+        pygame.draw.line(self.screen, b_accent, (x + 2, y), (x + blen, y), 2)
+        # Top-Right
+        pygame.draw.line(self.screen, b_accent, (x + w - 1, y + 2), (x + w - 1, y + blen), 2)
+        pygame.draw.line(self.screen, b_accent, (x + w - 1 - blen, y), (x + w - 3, y), 2)
+        # Bottom-Left
+        pygame.draw.line(self.screen, b_accent, (x, y + h - 1 - blen), (x, y + h - 3), 2)
+        pygame.draw.line(self.screen, b_accent, (x + 2, y + h - 1), (x + blen, y + h - 1), 2)
+        # Bottom-Right
+        pygame.draw.line(self.screen, b_accent, (x + w - 1, y + h - 1 - blen), (x + w - 1, y + h - 3), 2)
+        pygame.draw.line(self.screen, b_accent, (x + w - 1 - blen, y + h - 1), (x + w - 3, y + h - 1), 2)
+
+        # 3. Mini Citadel Shield & Golden 5-Pointed Command Star Emblem
+        emblem_cx = x + 13
+        emblem_cy = y + 12
+        pygame.draw.circle(self.screen, (24, 34, 52), (emblem_cx, emblem_cy), 6)
+        pygame.draw.circle(self.screen, color, (emblem_cx, emblem_cy), 6, 1)
+        self._draw_star_polygon(self.screen, emblem_cx, emblem_cy, 4.5, 2.0, self.COLOR_GOLD)
+
+        # 4. Header Title & Fortified HP Pill Badge
+        lbl_surf = self.font_metric_lbl.render("BASE HQ HEALTH", True, (220, 230, 248))
+        self.screen.blit(lbl_surf, (x + 23, y + 5))
+
+        val_str = f"{hp}/{max_hp} HP" if hp > 0 else "DESTROYED"
+        val_surf = self.font_badge.render(val_str, True, (255, 255, 255) if hp > 0 else self.COLOR_HP_RED)
+        pw = val_surf.get_width() + 10
+        ph = 15
+        pill_rect = pygame.Rect(x + w - pw - 6, y + 4, pw, ph)
+        pill_bg = (24, 42, 66) if (pid == 0 and hp > 6) else ((64, 24, 30) if (pid == 1 and hp > 6) else (48, 34, 18))
+        pygame.draw.rect(self.screen, pill_bg, pill_rect, border_radius=3)
+        pygame.draw.rect(self.screen, bar_col, pill_rect, 1, border_radius=3)
+        self.screen.blit(val_surf, (pill_rect.centerx - val_surf.get_width() // 2, pill_rect.y + 1))
+
+        # 5. 9-Plate Citadel Armor Trough (3 Bastion Tiers of 3 HP: [■■■ | ■■■ | ■■■])
+        trough_x = x + 7
+        trough_y = y + h - 15
+        trough_w = w - 14
+        trough_h = 10
+        pygame.draw.rect(self.screen, (9, 12, 19), (trough_x, trough_y, trough_w, trough_h), border_radius=3)
+        pygame.draw.rect(self.screen, (40, 52, 74), (trough_x, trough_y, trough_w, trough_h), 1, border_radius=3)
+
+        inner_y = trough_y + 2
+        inner_h = trough_h - 4
+        avail_w = trough_w - 6
+        # 6 normal 2px gaps (12px) + 2 bastion tier dividers (6px each = 12px) = 24px total spacing
+        seg_w = max(8, (avail_w - 24) // max_hp)
+        used_w = seg_w * max_hp + 24
+        cx_pos = trough_x + (trough_w - used_w) // 2
+        hi_col = (min(255, bar_col[0] + 65), min(255, bar_col[1] + 65), min(255, bar_col[2] + 65))
+
+        for i in range(max_hp):
+            if i in (3, 6):
+                # Bastion Tier Structural Divider
+                div_x = cx_pos + 2
+                pygame.draw.line(self.screen, self.COLOR_GOLD, (div_x, trough_y + 1), (div_x, trough_y + trough_h - 2), 2)
+                cx_pos += 6
+
+            plate_rect = pygame.Rect(cx_pos, inner_y, seg_w, inner_h)
+            if i < hp:
+                pygame.draw.rect(self.screen, bar_col, plate_rect, border_radius=1)
+                pygame.draw.line(self.screen, hi_col, (cx_pos + 1, inner_y), (cx_pos + seg_w - 2, inner_y), 1)
+            else:
+                pygame.draw.rect(self.screen, (22, 28, 40), plate_rect, border_radius=1)
+                pygame.draw.rect(self.screen, (34, 42, 58), plate_rect, 1, border_radius=1)
+
+            cx_pos += seg_w + 2
+
+    def _draw_clean_metric_box(
+        self, x: int, y: int, w: int, h: int,
+        label: str, value_str: str, value_color
+    ) -> None:
+        """Draws a clean, uncluttered technical metric box with bold value readout."""
+        rect = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, self.COLOR_INSET_BG, rect, border_radius=5)
+        pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, rect, 1, border_radius=5)
+
+        lbl_surf = self.font_metric_lbl.render(label, True, self.COLOR_TEXT_DIM)
         val_surf = self.font_metric_val.render(value_str, True, value_color)
-        self.screen.blit(val_surf, (x + 6, y + 15))
-
-        # Progress bar or subtext
-        if progress_pct is not None:
-            p_bar_w = w - 12
-            p_bar_y = y + h - 6
-            pygame.draw.rect(self.screen, (24, 32, 46), (x + 6, p_bar_y, p_bar_w, 3), border_radius=1)
-            fill_w = int(max(0.0, min(1.0, progress_pct)) * p_bar_w)
-            if fill_w > 0:
-                pygame.draw.rect(self.screen, value_color, (x + 6, p_bar_y, fill_w, 3), border_radius=1)
-        elif subtext:
-            sub_surf = self.font_coord.render(subtext, True, self.COLOR_TEXT_MUTED)
-            self.screen.blit(sub_surf, (x + 6, y + h - 13))
+        self.screen.blit(lbl_surf, (x + 8, y + 5))
+        self.screen.blit(val_surf, (x + 8, y + 20))
 
     def _render_hud(self, state: GameState, agent0: BaseAgent, agent1: BaseAgent) -> None:
-        """Renders the entire sidebar command dashboard with live telemetry and buttons."""
+        """Renders the redesigned, clean sidebar dashboard."""
         sidebar_x = self.board_w
         sidebar_rect = (sidebar_x, 0, self.sidebar_width, self.height_px)
         pygame.draw.rect(self.screen, self.COLOR_SIDEBAR_BG, sidebar_rect)
         pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (sidebar_x, 0), (sidebar_x, self.height_px), 2)
 
-        pad_x = sidebar_x + 14
-        card_w = self.sidebar_width - 28
-        curr_y = 10
+        pad_x = sidebar_x + 16
+        card_w = self.sidebar_width - 32
+        curr_y = 12
 
-        # 1. Header Banner & Current Map Badge
-        title_surf = self.font_title.render("BATTLE CITY COMMAND DECK", True, self.COLOR_GOLD)
+        # 1. Header Banner & Map Badge
+        title_surf = self.font_title.render("TANK BATTLE AI", True, self.COLOR_TEXT)
         self.screen.blit(title_surf, (pad_x, curr_y))
 
         clean_name = self.current_map_title.replace(".txt", "").replace("_", " ").upper()
-        if len(clean_name) > 18:
-            clean_name = clean_name[:17] + ".."
-        map_surf = self.font_coord.render(clean_name, True, self.COLOR_GOLD)
-        mb_w = map_surf.get_width() + 12
-        mb_rect = (pad_x + card_w - mb_w, curr_y, mb_w, 20)
-        pygame.draw.rect(self.screen, (28, 36, 52), mb_rect, border_radius=4)
-        pygame.draw.rect(self.screen, self.COLOR_GOLD, mb_rect, 1, border_radius=4)
-        self.screen.blit(map_surf, (mb_rect[0] + 6, mb_rect[1] + 3))
+        if len(clean_name) > 20:
+            clean_name = clean_name[:19] + ".."
+        map_surf = self.font_coord.render(f"MAP: {clean_name}", True, self.COLOR_GOLD)
+        mb_w = map_surf.get_width() + 14
+        mb_rect = pygame.Rect(pad_x + card_w - mb_w, curr_y + 1, mb_w, 22)
+        self.map_badge_rect = mb_rect
+        mx, my = pygame.mouse.get_pos()
+        mb_hover = mb_rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (42, 54, 78) if mb_hover else (28, 36, 52), mb_rect, border_radius=4)
+        pygame.draw.rect(self.screen, (255, 225, 95) if mb_hover else self.COLOR_GOLD, mb_rect, 1, border_radius=4)
+        self.screen.blit(map_surf, (mb_rect.x + 7, mb_rect.y + 4))
 
-        curr_y += 22
-        deck_sub = self.font_small.render("Adversarial Search & Multi-Agent Simulator • TDTU", True, self.COLOR_TEXT_DIM)
-        self.screen.blit(deck_sub, (pad_x, curr_y))
-        curr_y += 18
+        curr_y += 28
 
-        # 2. Cycle Progress Bar & Match Status Pill
-        cycle_pct = min(1.0, state.game_cycle / max(1, state.max_cycles))
-        bar_rect = (pad_x, curr_y, card_w, 6)
-        pygame.draw.rect(self.screen, (28, 36, 50), bar_rect, border_radius=3)
-        if cycle_pct > 0:
-            pygame.draw.rect(self.screen, self.COLOR_GOLD, (pad_x, curr_y, int(card_w * cycle_pct), 6), border_radius=3)
-        curr_y += 9
-
-        cycle_txt = self.font_badge.render(f"CYCLE {state.game_cycle} / {state.max_cycles}", True, self.COLOR_TEXT)
+        # 2. Cycle Counter & Match Status Pill
+        cycle_txt = self.font_bold.render(f"Cycle: {state.game_cycle} / {state.max_cycles}", True, self.COLOR_TEXT_DIM)
         self.screen.blit(cycle_txt, (pad_x, curr_y))
 
-        # Status Pill
         active_agent = agent0 if state.current_player == 0 else agent1
         active_is_human = getattr(active_agent, "is_human", False)
 
         if state.is_terminal():
-            status_text = "MATCH CONCLUDED"
+            status_text = "GAME OVER"
             status_c = (190, 45, 45)
+        elif not self.match_started:
+            status_text = "READY - PRESS START"
+            status_c = (22, 135, 85)
         elif self.is_paused:
-            status_text = "PAUSED [SPACE]"
+            status_text = "PAUSED"
             status_c = self.COLOR_AMBER
         elif active_is_human:
-            status_text = f"HUMAN TURN (P{state.current_player})"
-            status_c = (39, 174, 96)
+            status_text = f"P{state.current_player} HUMAN TURN"
+            status_c = self.COLOR_P0_PRIMARY if state.current_player == 0 else self.COLOR_P1_PRIMARY
         else:
-            turn_name = "P0 (MAX)" if state.current_player == 0 else "P1 (MIN)"
-            status_text = f"THINKING: {turn_name}"
-            status_c = (35, 125, 75)
+            status_text = f"P{state.current_player} AI TURN"
+            status_c = self.COLOR_P0_PRIMARY if state.current_player == 0 else self.COLOR_P1_PRIMARY
 
         pill_surf = self.font_badge.render(status_text, True, (255, 255, 255))
-        pill_w = pill_surf.get_width() + 12
-        pill_rect = (pad_x + card_w - pill_w, curr_y - 2, pill_w, 18)
+        pill_w = pill_surf.get_width() + 14
+        pill_rect = (pad_x + card_w - pill_w, curr_y - 1, pill_w, 20)
         pygame.draw.rect(self.screen, status_c, pill_rect, border_radius=4)
-        self.screen.blit(pill_surf, (pill_rect[0] + 6, pill_rect[1] + 2))
-        curr_y += 24
+        self.screen.blit(pill_surf, (pill_rect[0] + 7, pill_rect[1] + 3))
+        curr_y += 28
 
         # 3. Interactive Action Buttons & Speed Toggles
         curr_y = self._render_control_buttons(pad_x, curr_y, card_w)
 
-        # 4. Smooth Heuristic Advantage Gauge (e(s))
+        # 4. Clean Heuristic Evaluation Bar
         curr_y = self._render_eval_gauge(pad_x, curr_y, card_w)
+
+        p0_is_human = getattr(agent0, "is_human", False)
+        p1_is_human = getattr(agent1, "is_human", False)
+        both_humans = p0_is_human and p1_is_human
 
         # 5. Player 0 Card (Blue Team MAX)
         curr_y = self._draw_player_card(
@@ -1103,9 +1480,10 @@ class TankGameGUI:
             is_active_turn=(state.current_player == 0 and not state.is_terminal()),
             primary_color=self.COLOR_P0_PRIMARY,
             bg_color=self.COLOR_P0_BG,
-            border_color=self.COLOR_P0_BORDER
+            border_color=self.COLOR_P0_BORDER,
+            both_humans=both_humans
         )
-        curr_y += 6
+        curr_y += 10
 
         # 6. Player 1 Card (Red Team MIN)
         curr_y = self._draw_player_card(
@@ -1116,218 +1494,173 @@ class TankGameGUI:
             is_active_turn=(state.current_player == 1 and not state.is_terminal()),
             primary_color=self.COLOR_P1_PRIMARY,
             bg_color=self.COLOR_P1_BG,
-            border_color=self.COLOR_P1_BORDER
+            border_color=self.COLOR_P1_BORDER,
+            both_humans=both_humans
         )
-        curr_y += 6
+        curr_y += 10
 
-        # 7. Bottom Context Area: Human D-Pad OR Combat Specs
-        if active_is_human and not state.is_terminal():
-            curr_y = self._render_human_dpad(pad_x, curr_y, card_w, state.current_player)
+        # 7. Bottom Context Area: Human D-Pad OR Clean Rules Summary
+        if (p0_is_human or p1_is_human) and not state.is_terminal():
+            curr_y = self._render_human_dpad(pad_x, curr_y, card_w, state.current_player, both_humans)
         else:
             curr_y = self._render_specs_legend(pad_x, curr_y, card_w)
 
-        # 8. Quick Shortcuts Footer
-        self._render_shortcuts_footer(pad_x, curr_y, card_w)
-
     def _render_control_buttons(self, x: int, y: int, width: int) -> int:
-        """Renders clickable interactive control buttons and speed toggles with hover feedback."""
+        """Renders control buttons with prominent START/PAUSE highlight and speed presets."""
         mx, my = pygame.mouse.get_pos()
 
         for btn in self.buttons:
             if btn["id"] == "play_pause":
-                btn["label"] = "RESUME" if self.is_paused else "PAUSE"
+                if not self.match_started:
+                    btn["label"] = "START"
+                elif self.is_paused:
+                    btn["label"] = "RESUME"
+                else:
+                    btn["label"] = "PAUSE"
                 break
 
-        # Draw Row 1: Action buttons
+        # Row 1: Action buttons
         for btn in self.buttons:
             r = btn["rect"]
             r.top = y
             is_hover = r.collidepoint(mx, my)
-            btn_bg = (48, 62, 88) if is_hover else (28, 36, 50)
-            pygame.draw.rect(self.screen, btn_bg, r, border_radius=4)
-            pygame.draw.rect(self.screen, self.COLOR_GOLD if is_hover else (42, 54, 76), r, 1, border_radius=4)
+            is_start = btn["id"] == "play_pause"
 
-            lbl = self.font_small.render(btn["label"], True, (255, 255, 255) if is_hover else self.COLOR_TEXT)
+            if is_start:
+                if self.is_paused:
+                    btn_bg = (30, 165, 100) if is_hover else (22, 135, 82)
+                    b_col = (80, 235, 145)
+                else:
+                    btn_bg = (210, 130, 30) if is_hover else (180, 105, 20)
+                    b_col = self.COLOR_GOLD
+            else:
+                btn_bg = (48, 62, 88) if is_hover else (28, 36, 52)
+                b_col = self.COLOR_GOLD if is_hover else (45, 58, 82)
+
+            pygame.draw.rect(self.screen, btn_bg, r, border_radius=5)
+            pygame.draw.rect(self.screen, b_col, r, 1, border_radius=5)
+
+            font_to_use = self.font_bold if is_start else self.font_small
+            lbl = font_to_use.render(btn["label"], True, (255, 255, 255))
             self.screen.blit(lbl, (r.centerx - lbl.get_width() // 2, r.centery - lbl.get_height() // 2))
 
-        y += 30
+        y += 36
 
-        # Draw Row 2: Speed buttons
+        # Row 2: Speed buttons
         for sbtn in self.speed_buttons:
             r = sbtn["rect"]
             r.top = y
             is_active = (self.speed_multiplier == sbtn["val"])
             is_hover = r.collidepoint(mx, my)
 
-            s_bg = (24, 68, 42) if is_active else ((42, 54, 76) if is_hover else (24, 30, 42))
-            pygame.draw.rect(self.screen, s_bg, r, border_radius=4)
-            border_c = (46, 204, 113) if is_active else (self.COLOR_GOLD if is_hover else (38, 50, 70))
-            pygame.draw.rect(self.screen, border_c, r, 1, border_radius=4)
+            s_bg = (36, 105, 175) if is_active else ((42, 54, 76) if is_hover else (24, 30, 44))
+            pygame.draw.rect(self.screen, s_bg, r, border_radius=5)
+            border_c = (80, 175, 255) if is_active else (self.COLOR_GOLD if is_hover else (40, 52, 72))
+            pygame.draw.rect(self.screen, border_c, r, 1, border_radius=5)
 
             lbl_color = (255, 255, 255) if (is_active or is_hover) else self.COLOR_TEXT_DIM
             lbl = self.font_small.render(sbtn["label"], True, lbl_color)
             self.screen.blit(lbl, (r.centerx - lbl.get_width() // 2, r.centery - lbl.get_height() // 2))
 
-        return y + 26
+        return y + 33
 
     def _render_eval_gauge(self, x: int, y: int, width: int) -> int:
-        """
-        Renders a dynamic bidirectional tactical advantage gauge with smooth exponential
-        interpolation (lerp), graduation tick marks, and dominance indicator.
-        """
-        # Smooth interpolation to eliminate sudden jitter between turns
+        """Renders a clean, uncluttered Heuristic Evaluation Bar."""
         self.smooth_eval += (self.eval_score - self.smooth_eval) * 0.15
         clamped_score = max(-100.0, min(100.0, self.smooth_eval))
 
-        gauge_h = 32
+        gauge_h = 34
         container_rect = pygame.Rect(x, y, width, gauge_h)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BG, container_rect, border_radius=6)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, container_rect, 1, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, container_rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, container_rect, 1, border_radius=6)
 
-        # 1. Header line inside gauge
-        lbl_surf = self.font_metric_lbl.render("TACTICAL INITIATIVE", True, (130, 150, 180))
-        self.screen.blit(lbl_surf, (x + 8, y + 4))
+        lbl_surf = self.font_metric_lbl.render("HEURISTIC EVAL(s)", True, self.COLOR_TEXT_DIM)
+        self.screen.blit(lbl_surf, (x + 10, y + 4))
 
-        # Dynamic dominance status
         score_val = self.eval_score
         sign = "+" if score_val > 0 else ""
-        if score_val > 10:
-            dom_text = f"BLUE DOMINANCE ({sign}{score_val:.1f})"
+        if score_val > 3:
+            dom_text = f"P0 Blue Advantage ({sign}{score_val:.1f})"
             dom_color = self.COLOR_P0_PRIMARY
-        elif score_val > 2:
-            dom_text = f"BLUE ADVANTAGE ({sign}{score_val:.1f})"
-            dom_color = self.COLOR_P0_PRIMARY
-        elif score_val < -10:
-            dom_text = f"RED DOMINANCE ({sign}{score_val:.1f})"
-            dom_color = self.COLOR_P1_PRIMARY
-        elif score_val < -2:
-            dom_text = f"RED ADVANTAGE ({sign}{score_val:.1f})"
+        elif score_val < -3:
+            dom_text = f"P1 Red Advantage ({sign}{score_val:.1f})"
             dom_color = self.COLOR_P1_PRIMARY
         else:
-            dom_text = f"CONTESTED EQUILIBRIUM ({sign}{score_val:.1f})"
+            dom_text = f"Balanced ({sign}{score_val:.1f})"
             dom_color = self.COLOR_GOLD
 
         dom_surf = self.font_metric_lbl.render(dom_text, True, dom_color)
-        self.screen.blit(dom_surf, (x + width - dom_surf.get_width() - 8, y + 4))
+        self.screen.blit(dom_surf, (x + width - dom_surf.get_width() - 10, y + 4))
 
-        # 2. Recessed Gauge Groove
-        groove_x = x + 8
-        groove_y = y + 18
-        groove_w = width - 16
-        groove_h = 8
-        groove_rect = pygame.Rect(groove_x, groove_y, groove_w, groove_h)
-        pygame.draw.rect(self.screen, (10, 14, 20), groove_rect, border_radius=3)
-        pygame.draw.rect(self.screen, (28, 36, 52), groove_rect, 1, border_radius=3)
+        groove_x = x + 10
+        groove_y = y + 20
+        groove_w = width - 20
+        groove_h = 7
+        pygame.draw.rect(self.screen, (14, 18, 26), (groove_x, groove_y, groove_w, groove_h), border_radius=3)
 
-        # Center line
         center_x = groove_x + groove_w // 2
-        pygame.draw.line(self.screen, (60, 72, 95), (center_x, groove_y - 2), (center_x, groove_y + groove_h + 2), 1)
-
-        # Graduation ticks at -75, -50, -25, +25, +50, +75
         half_w = groove_w // 2
-        for pct in (-0.75, -0.5, -0.25, 0.25, 0.5, 0.75):
-            tx = int(center_x + pct * half_w)
-            pygame.draw.line(self.screen, (36, 44, 60), (tx, groove_y + 1), (tx, groove_y + groove_h - 1), 1)
-
-        # Fill bar from center
         bar_len = int(abs(clamped_score) / 100.0 * half_w)
         if clamped_score > 0:
-            fill_rect = pygame.Rect(center_x, groove_y + 1, bar_len, groove_h - 2)
-            pygame.draw.rect(self.screen, self.COLOR_P0_PRIMARY, fill_rect, border_radius=2)
+            pygame.draw.rect(self.screen, self.COLOR_P0_PRIMARY, (center_x, groove_y, bar_len, groove_h), border_radius=2)
         elif clamped_score < 0:
-            fill_rect = pygame.Rect(center_x - bar_len, groove_y + 1, bar_len, groove_h - 2)
-            pygame.draw.rect(self.screen, self.COLOR_P1_PRIMARY, fill_rect, border_radius=2)
+            pygame.draw.rect(self.screen, self.COLOR_P1_PRIMARY, (center_x - bar_len, groove_y, bar_len, groove_h), border_radius=2)
 
-        # Moving needle cursor (diamond)
-        cursor_x = center_x + int(clamped_score / 100.0 * half_w)
-        cursor_pts = [
-            (cursor_x, groove_y - 2),
-            (cursor_x + 3, groove_y + groove_h // 2),
-            (cursor_x, groove_y + groove_h + 2),
-            (cursor_x - 3, groove_y + groove_h // 2),
-        ]
-        pygame.draw.polygon(self.screen, (255, 255, 255), cursor_pts)
-
-        return y + gauge_h + 8
+        pygame.draw.line(self.screen, (255, 255, 255), (center_x, groove_y - 2), (center_x, groove_y + groove_h + 2), 2)
+        return y + gauge_h + 10
 
     def _draw_player_card(
         self, x: int, y: int, width: int, pid: int,
         agent: BaseAgent, tank, base, is_active_turn: bool,
-        primary_color, bg_color, border_color
+        primary_color, bg_color, border_color, both_humans: bool = False
     ) -> int:
         """
-        Renders a cohesive esports telemetry card featuring:
-        - Embedded Kenney tank avatar & team role
-        - Smooth breathing pulse for active player turn
-        - Interactive algorithm carousel & depth selector
-        - Segmented tactical power-cell vitals (Tank HP & Base HP)
-        - 4 Monospace Digital Telemetry Chips (Depth, Nodes, Pruning %, Latency)
+        Renders a clean, well-organized player card:
+        - Row 1: Tank Icon + Player Name + Turn Status Badge
+        - Row 2: Algorithm Selector [<] Name [>] + Depth [-] d [+]
+        - Row 3: Side-by-side Tank HP & Base HP boxes
+        - Row 4: 3 Clean Technical Metric Tiles (Depth, Nodes/Pruned, Time) OR Human Key Guide
         """
-        card_h = 180
+        card_h = 186
         card_rect = pygame.Rect(x, y, width, card_h)
+        pygame.draw.rect(self.screen, bg_color, card_rect, border_radius=8)
+        pygame.draw.rect(self.screen, primary_color if is_active_turn else border_color, card_rect, 2 if is_active_turn else 1, border_radius=8)
 
-        # 1. Background & Pulsing Active Turn Border
-        pygame.draw.rect(self.screen, bg_color, card_rect, border_radius=6)
+        cy = y + 8
 
-        import math
-        pulse = (math.sin(self.anim_tick * 0.12) + 1.0) / 2.0  # 0.0 to 1.0
-
-        if is_active_turn:
-            glow_c = (
-                min(255, int(primary_color[0] + pulse * 50)),
-                min(255, int(primary_color[1] + pulse * 50)),
-                min(255, int(primary_color[2] + pulse * 50)),
-            )
-            pygame.draw.rect(self.screen, glow_c, card_rect, 2, border_radius=6)
-        else:
-            pygame.draw.rect(self.screen, border_color, card_rect, 1, border_radius=6)
-
-        cy = y + 7
-
-        # 2. Top Header: Avatar Inset + Role + Turn Status Badge
-        avatar_key = f"tank_{pid}_icon"
-        avatar_img = self.sprites.get(avatar_key)
-        avatar_rect = pygame.Rect(x + 8, cy, 28, 28)
+        # 1. Header Row
+        avatar_img = self.sprites.get(f"tank_{pid}_icon")
+        avatar_rect = pygame.Rect(x + 10, cy, 26, 26)
         pygame.draw.rect(self.screen, (16, 22, 32), avatar_rect, border_radius=4)
-        pygame.draw.rect(self.screen, border_color, avatar_rect, 1, border_radius=4)
         if avatar_img:
-            self.screen.blit(avatar_img, (avatar_rect.centerx - avatar_img.get_width() // 2, avatar_rect.centery - avatar_img.get_height() // 2))
+            self.screen.blit(avatar_img, (avatar_rect.x, avatar_rect.y))
 
-        # Title & Subtitle
-        role_title = "PLAYER 0  [MAX]" if pid == 0 else "PLAYER 1  [MIN]"
-        role_sub = "Blue Coalition • Objective MAX" if pid == 0 else "Red Regiment • Objective MIN"
+        role_title = f"PLAYER {pid}  ({'BLUE - MAX' if pid == 0 else 'RED - MIN'})"
         t_surf = self.font_header.render(role_title, True, primary_color)
-        s_surf = self.font_coord.render(role_sub, True, self.COLOR_TEXT_DIM)
-        self.screen.blit(t_surf, (x + 42, cy))
-        self.screen.blit(s_surf, (x + 42, cy + 15))
+        self.screen.blit(t_surf, (x + 44, cy + 3))
 
-        # Turn Badge
         is_human = getattr(agent, "is_human", False)
-        if is_active_turn:
-            badge_text = "● YOUR TURN!" if is_human else "● THINKING..."
+        if is_active_turn and self.match_started:
+            badge_text = "YOUR TURN" if is_human else "ACTIVE TURN"
             badge_bg = (39, 174, 96) if is_human else primary_color
             tb_surf = self.font_badge.render(badge_text, True, (255, 255, 255))
             tb_w = tb_surf.get_width() + 12
-            tb_rect = pygame.Rect(x + width - tb_w - 8, cy + 3, tb_w, 20)
+            tb_rect = pygame.Rect(x + width - tb_w - 10, cy + 3, tb_w, 20)
             pygame.draw.rect(self.screen, badge_bg, tb_rect, border_radius=4)
             self.screen.blit(tb_surf, (tb_rect.x + 6, tb_rect.y + 3))
         else:
             tb_surf = self.font_coord.render("STANDBY", True, self.COLOR_TEXT_MUTED)
-            tb_w = tb_surf.get_width() + 10
-            tb_rect = pygame.Rect(x + width - tb_w - 8, cy + 3, tb_w, 18)
-            pygame.draw.rect(self.screen, (22, 28, 38), tb_rect, border_radius=3)
-            pygame.draw.rect(self.screen, (38, 48, 64), tb_rect, 1, border_radius=3)
-            self.screen.blit(tb_surf, (tb_rect.x + 5, tb_rect.y + 2))
+            self.screen.blit(tb_surf, (x + width - tb_surf.get_width() - 12, cy + 5))
 
-        cy += 31
+        cy += 32
 
-        # 3. Algorithm Selector Row: [<]  Algorithm Capsule  [>]    Depth: [-] d [+]
+        # 2. Algorithm Selector Row
         mx, my = pygame.mouse.get_pos()
         sel_idx = self.p0_algo_idx if pid == 0 else self.p1_algo_idx
         sel_key, sel_label = AGENT_PRESETS[sel_idx]
 
-        btn_prev_rect = pygame.Rect(x + 8, cy, 22, 22)
-        btn_next_rect = pygame.Rect(x + 236, cy, 22, 22)
+        btn_prev_rect = pygame.Rect(x + 10, cy, 24, 24)
+        btn_next_rect = pygame.Rect(x + 242, cy, 24, 24)
         if pid == 0:
             self.p0_algo_prev_rect = btn_prev_rect
             self.p0_algo_next_rect = btn_next_rect
@@ -1335,36 +1668,27 @@ class TankGameGUI:
             self.p1_algo_prev_rect = btn_prev_rect
             self.p1_algo_next_rect = btn_next_rect
 
-        # Hover states
-        prev_hover = btn_prev_rect.collidepoint(mx, my)
-        next_hover = btn_next_rect.collidepoint(mx, my)
-        pygame.draw.rect(self.screen, (42, 54, 76) if prev_hover else (24, 32, 46), btn_prev_rect, border_radius=3)
-        pygame.draw.rect(self.screen, (42, 54, 76) if next_hover else (24, 32, 46), btn_next_rect, border_radius=3)
-        pygame.draw.rect(self.screen, self.COLOR_GOLD if prev_hover else (38, 50, 70), btn_prev_rect, 1, border_radius=3)
-        pygame.draw.rect(self.screen, self.COLOR_GOLD if next_hover else (38, 50, 70), btn_next_rect, 1, border_radius=3)
+        for b_rect, ch in ((btn_prev_rect, "<"), (btn_next_rect, ">")):
+            hov = b_rect.collidepoint(mx, my)
+            pygame.draw.rect(self.screen, (45, 58, 82) if hov else (24, 32, 46), b_rect, border_radius=4)
+            pygame.draw.rect(self.screen, self.COLOR_GOLD if hov else (40, 52, 72), b_rect, 1, border_radius=4)
+            s = self.font_badge.render(ch, True, (255, 255, 255))
+            self.screen.blit(s, (b_rect.centerx - s.get_width() // 2, b_rect.centery - s.get_height() // 2))
 
-        lbl_prev = self.font_badge.render("<", True, (255, 255, 255))
-        lbl_next = self.font_badge.render(">", True, (255, 255, 255))
-        self.screen.blit(lbl_prev, (btn_prev_rect.centerx - lbl_prev.get_width() // 2, btn_prev_rect.centery - lbl_prev.get_height() // 2))
-        self.screen.blit(lbl_next, (btn_next_rect.centerx - lbl_next.get_width() // 2, btn_next_rect.centery - lbl_next.get_height() // 2))
-
-        # Central Capsule
-        algo_capsule_rect = pygame.Rect(x + 34, cy, 198, 22)
-        pygame.draw.rect(self.screen, (16, 22, 34), algo_capsule_rect, border_radius=3)
-        pygame.draw.rect(self.screen, primary_color if is_active_turn else (38, 50, 70), algo_capsule_rect, 1, border_radius=3)
-        algo_txt = sel_label[:27]
-        algo_surf = self.font_small.render(algo_txt, True, (245, 248, 255))
+        algo_capsule_rect = pygame.Rect(x + 38, cy, 200, 24)
+        pygame.draw.rect(self.screen, (16, 22, 34), algo_capsule_rect, border_radius=4)
+        pygame.draw.rect(self.screen, primary_color if is_active_turn else (40, 52, 72), algo_capsule_rect, 1, border_radius=4)
+        algo_surf = self.font_small.render(sel_label[:26], True, (245, 248, 255))
         self.screen.blit(algo_surf, (algo_capsule_rect.centerx - algo_surf.get_width() // 2, algo_capsule_rect.centery - algo_surf.get_height() // 2))
 
-        # Depth stepper or Mode Badge
         cur_depth = self.p0_depth if pid == 0 else self.p1_depth
         if sel_key not in ("human", "greedy"):
-            d_x = x + 266
-            lbl_dep = self.font_metric_lbl.render("DEPTH", True, self.COLOR_TEXT_DIM)
+            d_x = x + 276
+            lbl_dep = self.font_metric_lbl.render("DEPTH:", True, self.COLOR_TEXT_DIM)
             self.screen.blit(lbl_dep, (d_x, cy + 5))
 
-            d_dec = pygame.Rect(d_x + 38, cy, 20, 22)
-            d_inc = pygame.Rect(d_x + 82, cy, 20, 22)
+            d_dec = pygame.Rect(d_x + 48, cy, 22, 24)
+            d_inc = pygame.Rect(d_x + 98, cy, 22, 24)
             if pid == 0:
                 self.p0_depth_dec_rect = d_dec
                 self.p0_depth_inc_rect = d_inc
@@ -1372,272 +1696,170 @@ class TankGameGUI:
                 self.p1_depth_dec_rect = d_dec
                 self.p1_depth_inc_rect = d_inc
 
-            dec_hover = d_dec.collidepoint(mx, my)
-            inc_hover = d_inc.collidepoint(mx, my)
-            pygame.draw.rect(self.screen, (42, 54, 76) if dec_hover else (24, 32, 46), d_dec, border_radius=3)
-            pygame.draw.rect(self.screen, (42, 54, 76) if inc_hover else (24, 32, 46), d_inc, border_radius=3)
-            pygame.draw.rect(self.screen, self.COLOR_GOLD if dec_hover else (38, 50, 70), d_dec, 1, border_radius=3)
-            pygame.draw.rect(self.screen, self.COLOR_GOLD if inc_hover else (38, 50, 70), d_inc, 1, border_radius=3)
-
-            lbl_m = self.font_small.render("-", True, (255, 255, 255))
-            lbl_p = self.font_small.render("+", True, (255, 255, 255))
-            self.screen.blit(lbl_m, (d_dec.centerx - lbl_m.get_width() // 2, d_dec.centery - lbl_m.get_height() // 2))
-            self.screen.blit(lbl_p, (d_inc.centerx - lbl_p.get_width() // 2, d_inc.centery - lbl_p.get_height() // 2))
+            for b_rect, ch in ((d_dec, "-"), (d_inc, "+")):
+                hov = b_rect.collidepoint(mx, my)
+                pygame.draw.rect(self.screen, (45, 58, 82) if hov else (24, 32, 46), b_rect, border_radius=4)
+                pygame.draw.rect(self.screen, self.COLOR_GOLD if hov else (40, 52, 72), b_rect, 1, border_radius=4)
+                s = self.font_bold.render(ch, True, (255, 255, 255))
+                self.screen.blit(s, (b_rect.centerx - s.get_width() // 2, b_rect.centery - s.get_height() // 2))
 
             val_surf = self.font_metric_val.render(str(cur_depth), True, self.COLOR_GOLD)
-            self.screen.blit(val_surf, (d_x + 64, cy + 3))
-        elif sel_key == "human":
-            h_pill = pygame.Rect(x + 266, cy, width - 274, 22)
-            pygame.draw.rect(self.screen, (20, 48, 32), h_pill, border_radius=3)
-            pygame.draw.rect(self.screen, (46, 204, 113), h_pill, 1, border_radius=3)
-            h_hint = self.font_coord.render("MANUAL COCKPIT", True, (46, 204, 113))
-            self.screen.blit(h_hint, (h_pill.centerx - h_hint.get_width() // 2, h_pill.centery - h_hint.get_height() // 2))
+            self.screen.blit(val_surf, (d_x + 80, cy + 3))
         else:
-            g_pill = pygame.Rect(x + 266, cy, width - 274, 22)
-            pygame.draw.rect(self.screen, (48, 38, 20), g_pill, border_radius=3)
-            pygame.draw.rect(self.screen, (241, 196, 15), g_pill, 1, border_radius=3)
-            g_hint = self.font_coord.render("1-PLY REFLEX", True, (241, 196, 15))
-            self.screen.blit(g_hint, (g_pill.centerx - g_hint.get_width() // 2, g_pill.centery - g_hint.get_height() // 2))
+            mode_pill = pygame.Rect(x + 274, cy, width - 284, 24)
+            pygame.draw.rect(self.screen, (20, 46, 34) if sel_key == "human" else (48, 38, 20), mode_pill, border_radius=4)
+            m_txt = "MANUAL MODE" if sel_key == "human" else "1-PLY GREEDY"
+            m_col = self.COLOR_EMERALD if sel_key == "human" else self.COLOR_GOLD
+            m_surf = self.font_coord.render(m_txt, True, m_col)
+            self.screen.blit(m_surf, (mode_pill.centerx - m_surf.get_width() // 2, mode_pill.centery - m_surf.get_height() // 2))
 
-        cy += 28
+        cy += 32
 
-        # 4. Vitals Gauges: Tank Hull (6 HP) & Base HQ (9 HP)
+        # 3. Side-by-Side Health Boxes (Tank HP & Fortified Citadel Base HQ HP)
         t_hp = tank.hp if (tank and tank.is_alive) else 0
         b_hp = base.hp if (base and base.is_alive) else 0
+        half_w = (width - 28) // 2
 
-        # Tank vitals
-        t_status = f"({tank.x},{tank.y}) {tank.direction.name}" if (tank and tank.is_alive) else "DESTROYED"
-        vitals_w = width - 16
-        self._draw_tactical_vitals_bar(
-            x=x + 8, y=cy, w=vitals_w,
-            hp=t_hp, max_hp=6,
-            team_color=primary_color,
-            title=f"TANK HULL • {t_hp}/6 HP",
-            status_text=t_status
-        )
-        cy += 23
+        self._draw_clean_hp_box(x + 10, cy, half_w, 42, "TANK HEALTH", t_hp, 6, primary_color)
+        self._draw_citadel_hp_box(x + 18 + half_w, cy, half_w, 42, b_hp, 9, primary_color, pid=pid)
 
-        # Base vitals
-        b_status = "SECURE" if b_hp >= 6 else ("UNDER ATTACK" if b_hp > 0 else "BREACHED")
-        self._draw_tactical_vitals_bar(
-            x=x + 8, y=cy, w=vitals_w,
-            hp=b_hp, max_hp=9,
-            team_color=primary_color,
-            title=f"BASE HQ • {b_hp}/9 HP",
-            status_text=b_status
-        )
-        cy += 25
+        cy += 50
 
-        # 5. AI Digital Telemetry Hub (4 Metric Chips)
-        deck_y = cy
-        deck_w = width - 16
-        deck_h = 44
-
+        # 4. Technical Metrics Row (3 Clean Boxes for AI, or Dedicated Keyboard Controls for Human)
         if is_human:
-            # Human Pilot Guidance Deck
-            h_deck_rect = pygame.Rect(x + 8, deck_y, deck_w, deck_h)
-            pygame.draw.rect(self.screen, self.COLOR_INSET_BG, h_deck_rect, border_radius=4)
-            pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, h_deck_rect, 1, border_radius=4)
+            kb_rect = pygame.Rect(x + 10, cy, width - 20, 52)
+            pygame.draw.rect(self.screen, self.COLOR_INSET_BG, kb_rect, border_radius=5)
+            pygame.draw.rect(self.screen, primary_color if is_active_turn else self.COLOR_INSET_BORDER, kb_rect, 1, border_radius=5)
 
-            # 4 Keycap badges
-            kw = (deck_w - 20) // 4
-            keycaps = [
-                ("[W,A,S,D]", "NAVIGATE", (52, 219, 219)),
-                ("[SPACE]", "FIRE SHELL", (255, 120, 120)),
-                ("[X]", "STANDBY", self.COLOR_TEXT_DIM),
-                ("[D-PAD]", "TOUCH READY", (46, 204, 113)),
-            ]
-            for i, (k_btn, k_act, k_c) in enumerate(keycaps):
-                kx = x + 10 + i * (kw + 4)
-                pygame.draw.rect(self.screen, (22, 28, 40), (kx, deck_y + 4, kw, deck_h - 8), border_radius=3)
-                pygame.draw.rect(self.screen, (38, 48, 66), (kx, deck_y + 4, kw, deck_h - 8), 1, border_radius=3)
-                ks = self.font_metric_val.render(k_btn, True, k_c)
-                as_ = self.font_metric_lbl.render(k_act, True, self.COLOR_TEXT_DIM)
-                self.screen.blit(ks, (kx + (kw - ks.get_width()) // 2, deck_y + 7))
-                self.screen.blit(as_, (kx + (kw - as_.get_width()) // 2, deck_y + 24))
-        elif sel_key == "greedy":
-            # 1-Ply Reflex Deck
-            stats = agent.stats if agent else None
-            t_ms = (stats.execution_time * 1000) if stats else 0.2
-            gw = (deck_w - 6) // 2
-            self._draw_metric_chip(
-                x=x + 8, y=deck_y, w=gw, h=deck_h,
-                label="ENGINE TYPE",
-                value_str="1-PLY REFLEX",
-                value_color=(241, 196, 15),
-                subtext="Instant scoring"
-            )
-            self._draw_metric_chip(
-                x=x + 8 + gw + 6, y=deck_y, w=gw, h=deck_h,
-                label="EXECUTION TIME",
-                value_str=f"{t_ms:.2f} ms",
-                value_color=(160, 205, 255),
-                subtext="Reactive baseline"
-            )
+            if both_humans:
+                if pid == 0:
+                    k_title = "PLAYER 0 KEYS (LEFT KEYBOARD):"
+                    k_desc = "Move: [W][A][S][D]   |   Fire: [F] or [SPACE]   |   Stay: [Q]"
+                else:
+                    k_title = "PLAYER 1 KEYS (RIGHT KEYBOARD):"
+                    k_desc = "Move: [Arrow Keys]   |   Fire: [ENTER] or [K]   |   Stay: [R-SHIFT]"
+            else:
+                k_title = f"PLAYER {pid} HUMAN CONTROLS:"
+                k_desc = "Move: [WASD] / [Arrows]  |  Fire: [SPACE] / [ENTER]  |  Stay: [Q]"
+
+            kt_surf = self.font_metric_lbl.render(k_title, True, self.COLOR_GOLD)
+            kd_surf = self.font_bold.render(k_desc, True, self.COLOR_TEXT)
+            self.screen.blit(kt_surf, (x + 18, cy + 6))
+            self.screen.blit(kd_surf, (x + 18, cy + 24))
         else:
-            # Full 4-Chip Digital Telemetry Suite
             stats = agent.stats if agent else None
-            d_val = stats.search_depth if stats else cur_depth
-            prunes = stats.prune_count if stats else 0
+            d_val = stats.search_depth if (stats and stats.search_depth > 0) else (1 if sel_key == "greedy" else cur_depth)
             nodes = stats.explored_nodes if stats else 0
+            prunes = stats.prune_count if stats else 0
             t_ms = (stats.execution_time * 1000) if stats else 0.0
 
-            total_branches = nodes + prunes
-            prune_pct = int(prunes / total_branches * 100) if total_branches > 0 else 0
-            is_ab = ("alpha" in agent.name.lower() or "ab" in agent.name.lower() or prunes > 0)
-
-            chip_w = (deck_w - 18) // 4
-            # Chip 1: Depth
-            self._draw_metric_chip(
-                x=x + 8, y=deck_y, w=chip_w, h=deck_h,
-                label="DEPTH",
-                value_str=f"d = {d_val}",
-                value_color=self.COLOR_CYAN,
-                subtext="Tree cutoff"
-            )
-            # Chip 2: Nodes
-            self._draw_metric_chip(
-                x=x + 8 + (chip_w + 6), y=deck_y, w=chip_w, h=deck_h,
-                label="NODES",
-                value_str=f"{nodes:,}",
-                value_color=self.COLOR_GOLD,
-                subtext="States expanded"
-            )
-            # Chip 3: Pruning %
-            prune_val_str = f"{prune_pct}%" if is_ab else "0%"
-            prune_sub = f"{prunes:,} cuts" if is_ab else "Minimax"
-            self._draw_metric_chip(
-                x=x + 8 + 2 * (chip_w + 6), y=deck_y, w=chip_w, h=deck_h,
-                label="PRUNED",
-                value_str=prune_val_str,
-                value_color=self.COLOR_EMERALD if is_ab else self.COLOR_TEXT_MUTED,
-                progress_pct=(prune_pct / 100.0) if is_ab else None,
-                subtext=prune_sub
-            )
-            # Chip 4: Latency
-            self._draw_metric_chip(
-                x=x + 8 + 3 * (chip_w + 6), y=deck_y, w=chip_w, h=deck_h,
-                label="LATENCY",
-                value_str=f"{t_ms:.1f}ms",
-                value_color=(160, 205, 255),
-                subtext="Decision time"
-            )
+            box_w = (width - 32) // 3
+            box_h = 52
+            self._draw_clean_metric_box(x + 10, cy, box_w, box_h, "SEARCH DEPTH", f"d = {d_val}", self.COLOR_CYAN)
+            nodes_str = f"{nodes:,} ({prunes} cut)" if prunes > 0 else f"{nodes:,} nodes"
+            self._draw_clean_metric_box(x + 16 + box_w, cy, box_w, box_h, "NODES / PRUNED", nodes_str, self.COLOR_GOLD)
+            self._draw_clean_metric_box(x + 22 + 2 * box_w, cy, box_w, box_h, "DECISION TIME", f"{t_ms:.1f} ms", self.COLOR_EMERALD)
 
         return y + card_h
 
-    def _render_human_dpad(self, x: int, y: int, width: int, active_pid: int) -> int:
-        """Renders interactive clickable on-screen D-Pad and Fire buttons for human player."""
-        card_h = 120
+    def _render_human_dpad(self, x: int, y: int, width: int, active_pid: int, both_humans: bool = False) -> int:
+        """Renders a clean, clickable on-screen control pad without unsupported symbols."""
+        card_h = 128
         rect = pygame.Rect(x, y, width, card_h)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=8)
         team_color = self.COLOR_P0_PRIMARY if active_pid == 0 else self.COLOR_P1_PRIMARY
-        pygame.draw.rect(self.screen, team_color, rect, 1, border_radius=6)
+        pygame.draw.rect(self.screen, team_color, rect, 1, border_radius=8)
 
-        hdr_txt = f"PILOT COCKPIT: P{active_pid} CONTROLS (KEYBOARD / CLICK D-PAD)"
+        mode_tag = "2-PLAYER PVP MODE" if both_humans else f"P{active_pid} MANUAL CONTROLS"
+        hdr_txt = f"ON-SCREEN CONTROL PAD ({mode_tag} - ACTIVE: P{active_pid})"
         hdr_surf = self.font_metric_lbl.render(hdr_txt, True, self.COLOR_GOLD)
-        self.screen.blit(hdr_surf, (x + 10, y + 6))
+        self.screen.blit(hdr_surf, (x + 12, y + 7))
 
         mx, my = pygame.mouse.get_pos()
         self.dpad_buttons = []
 
-        # D-Pad Button Layout
-        bx = x + 24
-        by = y + 24
-        bs = 26
+        bx = x + 16
+        by = y + 28
+        bw = 54
+        bh = 28
 
         dpad_defs = [
-            ("▲", Action.MOVE_UP,    pygame.Rect(bx + bs + 4, by, bs, bs)),
-            ("◀", Action.MOVE_LEFT,  pygame.Rect(bx, by + bs + 4, bs, bs)),
-            ("▼", Action.MOVE_DOWN,  pygame.Rect(bx + bs + 4, by + bs + 4, bs, bs)),
-            ("▶", Action.MOVE_RIGHT, pygame.Rect(bx + 2 * (bs + 4), by + bs + 4, bs, bs)),
+            ("UP",    Action.MOVE_UP,    pygame.Rect(bx + bw + 4, by, bw, bh)),
+            ("LEFT",  Action.MOVE_LEFT,  pygame.Rect(bx, by + bh + 4, bw, bh)),
+            ("DOWN",  Action.MOVE_DOWN,  pygame.Rect(bx + bw + 4, by + bh + 4, bw, bh)),
+            ("RIGHT", Action.MOVE_RIGHT, pygame.Rect(bx + 2 * (bw + 4), by + bh + 4, bw, bh)),
         ]
 
-        for lbl_char, act, b_rect in dpad_defs:
+        for lbl_txt, act, b_rect in dpad_defs:
             is_hover = b_rect.collidepoint(mx, my)
-            pygame.draw.rect(self.screen, (48, 62, 88) if is_hover else (26, 34, 48), b_rect, border_radius=4)
-            pygame.draw.rect(self.screen, team_color if is_hover else self.COLOR_CARD_BORDER, b_rect, 1, border_radius=4)
-            s = self.font_badge.render(lbl_char, True, (255, 255, 255))
+            pygame.draw.rect(self.screen, (48, 62, 88) if is_hover else (24, 32, 46), b_rect, border_radius=5)
+            pygame.draw.rect(self.screen, team_color if is_hover else self.COLOR_CARD_BORDER, b_rect, 1, border_radius=5)
+            s = self.font_badge.render(lbl_txt, True, (255, 255, 255))
             self.screen.blit(s, (b_rect.centerx - s.get_width() // 2, b_rect.centery - s.get_height() // 2))
             self.dpad_buttons.append({"action": act, "rect": b_rect})
 
         # FIRE & STAY Buttons
-        fire_rect = pygame.Rect(x + 150, by + 4, 130, 36)
+        fire_rect = pygame.Rect(x + 200, by + 2, 118, 56)
         is_fire_hover = fire_rect.collidepoint(mx, my)
-        pygame.draw.rect(self.screen, (190, 45, 45) if is_fire_hover else (150, 30, 30), fire_rect, border_radius=6)
-        pygame.draw.rect(self.screen, (255, 120, 120) if is_fire_hover else (200, 70, 70), fire_rect, 1, border_radius=6)
-        f_lbl = self.font_header.render("💥 FIRE (SPACE)", True, (255, 255, 255))
+        pygame.draw.rect(self.screen, (205, 55, 55) if is_fire_hover else (165, 38, 38), fire_rect, border_radius=6)
+        pygame.draw.rect(self.screen, (255, 130, 130), fire_rect, 1, border_radius=6)
+        f_lbl = self.font_header.render("FIRE CANNON", True, (255, 255, 255))
         self.screen.blit(f_lbl, (fire_rect.centerx - f_lbl.get_width() // 2, fire_rect.centery - f_lbl.get_height() // 2))
         self.dpad_buttons.append({"action": Action.FIRE, "rect": fire_rect})
 
-        stay_rect = pygame.Rect(x + 290, by + 4, 120, 36)
+        stay_rect = pygame.Rect(x + 326, by + 2, 90, 56)
         is_stay_hover = stay_rect.collidepoint(mx, my)
-        pygame.draw.rect(self.screen, (42, 54, 76) if is_stay_hover else (26, 34, 48), stay_rect, border_radius=6)
+        pygame.draw.rect(self.screen, (48, 62, 88) if is_stay_hover else (26, 34, 48), stay_rect, border_radius=6)
         pygame.draw.rect(self.screen, self.COLOR_GOLD if is_stay_hover else self.COLOR_CARD_BORDER, stay_rect, 1, border_radius=6)
-        st_lbl = self.font_header.render("⏸ STAY (X)", True, (240, 240, 240))
+        st_lbl = self.font_header.render("STAY", True, (240, 240, 240))
         self.screen.blit(st_lbl, (stay_rect.centerx - st_lbl.get_width() // 2, stay_rect.centery - st_lbl.get_height() // 2))
         self.dpad_buttons.append({"action": Action.STAY, "rect": stay_rect})
 
-        hint_str = "Keys: W/A/S/D or Arrows • SPACE Fire • X Stay • Mouse Click on buttons"
-        hint_surf = self.font_coord.render(hint_str, True, self.COLOR_TEXT_DIM)
-        self.screen.blit(hint_surf, (x + 12, y + card_h - 18))
+        if both_humans:
+            hint_str = "2-Human PvP: P0 uses [WASD + F/SPACE]  |  P1 uses [Arrows + ENTER]"
+        else:
+            hint_str = "Shortcuts: [P] Pause  |  [U] Undo  |  [R] Reset  |  [M] Change Map"
+        hint_surf = self.font_small.render(hint_str, True, self.COLOR_TEXT_DIM)
+        self.screen.blit(hint_surf, (x + 12, y + card_h - 22))
 
         return y + card_h + 6
 
     def _render_specs_legend(self, x: int, y: int, width: int) -> int:
-        """
-        Renders the Tactical Armory & Asset Specifications showcase, seamlessly embedding
-        authentic Kenney sprites (Crates, Sandbags, Shells, Tanks, and Radar HQs).
-        """
-        card_h = 120
+        """Renders a clean, easy-to-read Game Parameters & Entities summary card."""
+        card_h = 128
         rect = pygame.Rect(x, y, width, card_h)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=6)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=8)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=8)
 
-        hdr_surf = self.font_metric_lbl.render("TACTICAL ARMORY & ASSET SPECIFICATIONS (KENNEY SPEC)", True, self.COLOR_GOLD)
-        self.screen.blit(hdr_surf, (x + 10, y + 6))
+        hdr_surf = self.font_metric_lbl.render("GAME ENTITIES & TECHNICAL SPECIFICATIONS", True, self.COLOR_GOLD)
+        self.screen.blit(hdr_surf, (x + 12, y + 7))
 
-        # 3x2 Matrix of Asset Tiles
-        col_w = (width - 24) // 3
+        col_w = (width - 28) // 2
         row_h = 38
-        y_start = y + 24
+        y_start = y + 26
 
         specs_items = [
-            # Row 1
-            ("crate_metal_spec", "Metal Wall", "HP: 3 (Reinforced)", (x + 8, y_start)),
-            ("crate_wood_spec",  "Wood Wall",  "HP: 2 (Destructible)", (x + 8 + col_w + 4, y_start)),
-            ("sandbag_spec",     "Sandbag",    "HP: 1 (Light Cover)",  (x + 8 + 2 * (col_w + 4), y_start)),
-            # Row 2
-            ("bullet_icon",      "Kinetic Shell", "Spd: 3 cells/cycle", (x + 8, y_start + row_h + 4)),
-            ("tank_0_icon",      "Combat Tank",  "HP: 6 (1 Dmg/Hit)",  (x + 8 + col_w + 4, y_start + row_h + 4)),
-            ("base_0_icon",      "Command Base", "HP: 9 (Core Target)", (x + 8 + 2 * (col_w + 4), y_start + row_h + 4)),
+            ("tank_0_icon",      "Combat Tank: 6 HP",     "6 Legal Actions (1 Dmg/hit)", (x + 10, y_start)),
+            ("base_0_icon",      "Command Base: 9 HP",    "Destroy enemy HQ to win",     (x + 18 + col_w, y_start)),
+            ("crate_metal_spec", "Obstacle Walls: 1-3 HP", "Metal (3), Wood (2), Bag (1)", (x + 10, y_start + row_h + 6)),
+            ("bullet_icon",      "Bullet Speed: 3 Cells", "Cell-by-cell collision check", (x + 18 + col_w, y_start + row_h + 6)),
         ]
 
         for sprite_key, title, spec_desc, (tx, ty) in specs_items:
             tile_rect = pygame.Rect(tx, ty, col_w, row_h)
-            pygame.draw.rect(self.screen, self.COLOR_INSET_BG, tile_rect, border_radius=4)
-            pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, tile_rect, 1, border_radius=4)
+            pygame.draw.rect(self.screen, self.COLOR_INSET_BG, tile_rect, border_radius=5)
+            pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, tile_rect, 1, border_radius=5)
 
             sp = self.sprites.get(sprite_key)
             if sp:
-                self.screen.blit(sp, (tx + 6, ty + (row_h - sp.get_height()) // 2))
+                self.screen.blit(sp, (tx + 8, ty + (row_h - sp.get_height()) // 2))
 
-            ts = self.font_small.render(title, True, self.COLOR_TEXT)
-            ds = self.font_coord.render(spec_desc, True, self.COLOR_TEXT_DIM)
-            self.screen.blit(ts, (tx + 32, ty + 4))
-            self.screen.blit(ds, (tx + 32, ty + 18))
+            ts = self.font_bold.render(title, True, self.COLOR_TEXT)
+            ds = self.font_small.render(spec_desc, True, self.COLOR_TEXT_DIM)
+            self.screen.blit(ts, (tx + 34, ty + 3))
+            self.screen.blit(ds, (tx + 34, ty + 19))
 
         return y + card_h
-
-    def _render_shortcuts_footer(self, x: int, y: int, width: int) -> None:
-        """Renders keyboard shortcuts quick guide."""
-        card_h = 24
-        rect = (x, y, width, card_h)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BG, rect, border_radius=4)
-        pygame.draw.rect(self.screen, self.COLOR_INSET_BORDER, rect, 1, border_radius=4)
-
-        s_txt = "[SPACE] Pause/Fire • [S] Step +1 • [U] Undo • [R] Reset • [M] Cycle Map • [1-4] Speed"
-        s_surf = self.font_coord.render(s_txt, True, self.COLOR_TEXT_DIM)
-        self.screen.blit(s_surf, (x + (width - s_surf.get_width()) // 2, y + 5))
 
     def _render_game_over_banner(self, state: GameState, agent0: BaseAgent, agent1: BaseAgent) -> None:
         """Draws victory/draw banner."""
@@ -1660,11 +1882,11 @@ class TankGameGUI:
         pygame.draw.rect(self.screen, border_c, (cx, cy, card_w, card_h), 2, border_radius=10)
 
         if winner == 0:
-            w_title = "VICTORY: PLAYER 0 (MAX)"
+            w_title = "VICTORY: PLAYER 0 (BLUE - MAX)"
             w_name = agent0.name if agent0 else "Player 0"
             w_color = self.COLOR_P0_PRIMARY
         elif winner == 1:
-            w_title = "VICTORY: PLAYER 1 (MIN)"
+            w_title = "VICTORY: PLAYER 1 (RED - MIN)"
             w_name = agent1.name if agent1 else "Player 1"
             w_color = self.COLOR_P1_PRIMARY
         else:

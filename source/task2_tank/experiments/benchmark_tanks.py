@@ -176,6 +176,10 @@ class TankTournament:
             print("[Warning] No single-move benchmark data available to plot.")
             return ""
 
+        if not os.path.isabs(save_path):
+            task2_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            save_path = os.path.join(task2_dir, save_path)
+
         fig, axs = plt.subplots(1, 2, figsize=(14, 5))
         plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
 
@@ -244,6 +248,10 @@ class TankTournament:
             md.append(f"| {r['match']} | {r['p0']} | {r['p1']} | **{r['winner']}** | {r['cycles']} |")
 
         return "\n".join(md)
+
+
+# Compatibility alias
+TankBenchmarkRunner = TankTournament
 
 
 if __name__ == "__main__":

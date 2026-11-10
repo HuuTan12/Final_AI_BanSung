@@ -9,23 +9,24 @@ Description:
        - Min-Conflicts local search (variable selection, conflict row evaluation, moves, restarts).
        - Glucose3 PySAT solver (CNF model decoding and step-placement).
     2. Comprehensive Telemetry Panel:
-       - Số trường hợp đã xét / duyệt (Total Cases Explored)
-       - Số nghiệm hợp lệ tìm thấy (Solutions Found, e.g. 92/92 for N=8)
-       - Số xung đột hiện tại (Attacking pairs count)
-       - Số bước thực hiện & Số lần quay lui / khởi động lại
-       - Thống kê mệnh đề CNF (Công thức ALO + AMO lý thuyết & thực tế theo Req 1)
-       - Thời gian thực thi (Latency ms)
-    3. Interactive Playback Controls:
+       - Total Cases Tested (Explored game states / assignments)
+       - Solutions Found (e.g. 92/92 for N=8)
+       - Active Conflicts (Attacking queen pairs count)
+       - Search Steps & Backtrack / Random Restart counters
+       - Propositional Logic CNF Model statistics (ALO + AMO formulas per Req 1)
+       - Runtime Latency (ms)
+    3. Interactive Controls:
        - Play / Pause (SPACE)
        - Step Forward +1 (Right Arrow / S)
-       - Step Backward -1 (Left Arrow / A) with full step history stack!
+       - Step Backward -1 (Left Arrow / A) with complete undo history stack
        - Reset (R)
        - Speed Presets: 1x, 2x, 5x, 10x, Instant (Keys 1..5)
     4. Advanced Features:
-       - Solution Browser: Navigate all 92 valid solutions with < Prev / Next >
-       - Glowing red laser attack beams connecting conflicting queens
+       - Authentic high-resolution PNG piece assets and chessboard textures
+       - Solution Browser: Navigate all valid solutions with < Prev / Next >
+       - Glowing laser attack beams with impact spark flares connecting conflicting queens
        - Interactive Sandbox Mode: Click any square on the board to place/remove queens manually
-       - Customizable board size N (4, 5, 6, 7, 8, 9, 10, 12, 16)
+       - Dynamic chessboard dimension scaling (N = 4, 5, 6, 7, 8, 9, 10, 12, 16)
 """
 
 import os
@@ -68,6 +69,7 @@ except ImportError:
 class NQueensGUI:
     """
     High-Fidelity Graphical User Interface for N-Queens.
+    Supports authentic asset rendering, animated step-by-step search, and real-time telemetry.
     """
 
     def __init__(self, n: int = 8, width: int = 1280, height: int = 820):
@@ -89,7 +91,7 @@ class NQueensGUI:
         self.anim_tick = 0
         self.last_step_time = 0.0
 
-        # Step generators and history
+        # Step generators and history stack
         self.step_generator = None
         self.step_history: List[Dict[str, Any]] = []
         self.history_index: int = -1
@@ -103,7 +105,7 @@ class NQueensGUI:
         self.current_conflicts = 0
         self.execution_time_ms = 0.0
         self.start_perf_time = 0.0
-        self.status_message = "Sẵn sàng. Nhấn PLAY hoặc TIẾN 1 BƯỚC để bắt đầu duyệt."
+        self.status_message = "Ready. Click PLAY or STEP +1 to start visual execution."
 
         # Candidate overlay
         self.candidate_col: int = -1
@@ -120,18 +122,18 @@ class NQueensGUI:
         self.cnf_stats: Dict[str, Any] = {}
         self._update_cnf_stats()
 
-        # UI Color Theme - Modern Luxury Slate & Cyberpunk Accent
-        self.COLOR_BG = (16, 20, 28)
-        self.COLOR_SIDEBAR_BG = (22, 28, 40)
-        self.COLOR_CARD_BG = (28, 36, 52)
-        self.COLOR_CARD_BORDER = (46, 58, 82)
-        self.COLOR_CARD_HEADER = (36, 46, 66)
+        # UI Color Theme - Modern Cyberpunk / Tactical Dark Command Center
+        self.COLOR_BG = (14, 18, 26)
+        self.COLOR_SIDEBAR_BG = (20, 26, 38)
+        self.COLOR_CARD_BG = (26, 34, 48)
+        self.COLOR_CARD_BORDER = (42, 54, 76)
+        self.COLOR_CARD_HEADER = (32, 42, 60)
 
-        # Chessboard Colors
-        self.COLOR_TILE_LIGHT = (235, 238, 245)
-        self.COLOR_TILE_DARK = (88, 115, 148)
-        self.COLOR_TILE_BORDER = (38, 48, 68)
-        self.COLOR_COORD_TEXT = (130, 148, 175)
+        # Chessboard Colors (Fallbacks if assets are unavailable)
+        self.COLOR_TILE_LIGHT = (236, 240, 246)
+        self.COLOR_TILE_DARK = (78, 102, 134)
+        self.COLOR_TILE_BORDER = (32, 42, 58)
+        self.COLOR_COORD_TEXT = (120, 140, 168)
 
         # Queen and Highlight Colors
         self.COLOR_QUEEN_GOLD = (250, 195, 30)
@@ -144,16 +146,19 @@ class NQueensGUI:
         self.COLOR_SUCCESS_GREEN = (46, 204, 113)
         self.COLOR_AMBER_ALERT = (241, 196, 15)
         self.COLOR_TEXT = (240, 244, 252)
-        self.COLOR_TEXT_DIM = (145, 158, 178)
-        self.COLOR_TEXT_MUTED = (95, 108, 128)
+        self.COLOR_TEXT_DIM = (140, 154, 175)
+        self.COLOR_TEXT_MUTED = (90, 102, 122)
 
         # Interactive UI Buttons registry
         self.buttons: List[Dict[str, Any]] = []
 
-        # Pygame handles
+        # Pygame handles and assets
         self.screen = None
         self.clock = None
         self.fonts: Dict[str, pygame.font.Font] = {}
+        self.raw_assets: Dict[str, pygame.Surface] = {}
+        self.scaled_assets: Dict[str, pygame.Surface] = {}
+        self.assets_loaded = False
 
     def _update_cnf_stats(self) -> None:
         """Calculates theoretical CNF clause statistics for the current N."""
@@ -162,8 +167,71 @@ class NQueensGUI:
         self.cnf_stats = generator.get_clause_statistics()
         self.cnf_stats["theoretical_total"] = generator.get_theoretical_clause_count()
 
+    def _load_assets(self) -> None:
+        """Loads graphical PNG assets from assets directory."""
+        assets_dir = os.path.join(_task1_dir, "assets")
+        asset_files = {
+            "queen_gold": "queen_gold.png",
+            "queen_conflict": "queen_conflict.png",
+            "queen_safe": "queen_safe.png",
+            "queen_candidate": "queen_candidate.png",
+            "crown_emblem": "crown_emblem.png",
+            "tile_light": "tile_light.png",
+            "tile_dark": "tile_dark.png",
+            "spark_flare": "spark_flare.png",
+        }
+
+        self.raw_assets.clear()
+        for key, fname in asset_files.items():
+            fpath = os.path.join(assets_dir, fname)
+            if os.path.isfile(fpath):
+                try:
+                    surf = pygame.image.load(fpath).convert_alpha()
+                    self.raw_assets[key] = surf
+                except Exception as e:
+                    print(f"[NQueensGUI] Warning: Failed to load asset '{fname}': {e}")
+
+        self.assets_loaded = len(self.raw_assets) > 0
+        if self.assets_loaded:
+            self._rescale_assets()
+
+    def _rescale_assets(self) -> None:
+        """Caches scaled versions of the assets matching the current cell size."""
+        if not self.assets_loaded:
+            return
+
+        cs = max(16, self.cell_size)
+        piece_size = max(14, int(cs * 0.85))
+
+        # Scale queen pieces
+        for q_key in ("queen_gold", "queen_conflict", "queen_safe", "queen_candidate"):
+            if q_key in self.raw_assets:
+                self.scaled_assets[q_key] = pygame.transform.smoothscale(
+                    self.raw_assets[q_key], (piece_size, piece_size)
+                )
+
+        # Scale board tiles
+        for t_key in ("tile_light", "tile_dark"):
+            if t_key in self.raw_assets:
+                self.scaled_assets[t_key] = pygame.transform.smoothscale(
+                    self.raw_assets[t_key], (cs, cs)
+                )
+
+        # Scale spark flare
+        if "spark_flare" in self.raw_assets:
+            flare_size = max(12, int(cs * 0.4))
+            self.scaled_assets["spark_flare"] = pygame.transform.smoothscale(
+                self.raw_assets["spark_flare"], (flare_size, flare_size)
+            )
+
+        # Header crown emblem
+        if "crown_emblem" in self.raw_assets:
+            self.scaled_assets["crown_emblem"] = pygame.transform.smoothscale(
+                self.raw_assets["crown_emblem"], (36, 36)
+            )
+
     def init_display(self) -> bool:
-        """Initializes Pygame display, cross-platform fonts, and UI buttons."""
+        """Initializes Pygame display, cross-platform fonts, assets, and UI buttons."""
         if not PYGAME_AVAILABLE:
             print("[NQueensGUI] Notice: Pygame is not installed. Run 'pip install pygame' to use GUI.")
             return False
@@ -173,19 +241,21 @@ class NQueensGUI:
             pygame.font.init()
 
             self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
-            pygame.display.set_caption(f"N-Queens AI Visualizer (N={self.n}) - Propositional Logic & Local Search")
+            pygame.display.set_caption(f"N-Queens AI Tactical Visualizer (N={self.n}) - Propositional Logic & Local Search")
             self.clock = pygame.time.Clock()
 
             # Cross-platform fonts with fallback chains
-            self.fonts["title"] = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 20, bold=True)
-            self.fonts["header"] = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 14, bold=True)
-            self.fonts["body_bold"] = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 12, bold=True)
-            self.fonts["body"] = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 12)
+            self.fonts["title"] = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 18, bold=True)
+            self.fonts["header"] = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 13, bold=True)
+            self.fonts["body_bold"] = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 11, bold=True)
+            self.fonts["body"] = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 11)
             self.fonts["small"] = pygame.font.SysFont("Segoe UI,Helvetica,Arial", 10)
             self.fonts["badge"] = pygame.font.SysFont("Consolas,Courier New,Arial", 11, bold=True)
+            self.fonts["mono_val"] = pygame.font.SysFont("Consolas,Courier New,Arial", 13, bold=True)
             self.fonts["coords"] = pygame.font.SysFont("Consolas,Courier New,Arial", 11, bold=True)
-            self.fonts["large_stat"] = pygame.font.SysFont("Segoe UI,Trebuchet MS,Helvetica,Arial", 22, bold=True)
+            self.fonts["large_stat"] = pygame.font.SysFont("Consolas,Courier New,Arial", 20, bold=True)
 
+            self._load_assets()
             self._update_layout()
             self._init_buttons()
             self._init_solver()
@@ -201,7 +271,7 @@ class NQueensGUI:
         self.height = h
 
         board_area_w = w - self.sidebar_width
-        board_area_h = h
+        board_area_h = h - 28
         max_board_dim = min(board_area_w - 2 * self.board_margin, board_area_h - 2 * self.board_margin)
         max_board_dim = max(240, max_board_dim)
 
@@ -212,6 +282,7 @@ class NQueensGUI:
         offset_y = self.board_margin + (board_area_h - 2 * self.board_margin - actual_board_px) // 2
 
         self.board_rect = pygame.Rect(offset_x, offset_y, actual_board_px, actual_board_px)
+        self._rescale_assets()
 
     def _init_buttons(self) -> None:
         """Builds all clickable controls in the right sidebar."""
@@ -220,68 +291,79 @@ class NQueensGUI:
         sb_w = self.sidebar_width - 32
 
         # 1. Playback Deck (Row 1)
-        btn_y = 120
+        btn_y = 66
         col_w = (sb_w - 18) // 4
-        self.buttons.append({"id": "btn_play", "label": "▶ Play", "rect": pygame.Rect(sb_x, btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_step_back", "label": "⏮ Lùi", "rect": pygame.Rect(sb_x + (col_w + 6), btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_step_fwd", "label": "Tiến ⏭", "rect": pygame.Rect(sb_x + 2 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_reset", "label": "🔄 Reset", "rect": pygame.Rect(sb_x + 3 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
+        play_lbl = "PAUSE" if self.is_playing else "START / PLAY"
+        self.buttons.append({"id": "btn_play", "label": play_lbl, "rect": pygame.Rect(sb_x, btn_y, col_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_step_back", "label": "< STEP -1", "rect": pygame.Rect(sb_x + (col_w + 6), btn_y, col_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_step_fwd", "label": "STEP +1 >", "rect": pygame.Rect(sb_x + 2 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_reset", "label": "RESET", "rect": pygame.Rect(sb_x + 3 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
 
         # 2. Speed Controls (Row 2)
         btn_y += 38
-        speeds = [("1x", 1), ("2x", 2), ("5x", 5), ("10x", 10), ("⚡ Max", 50)]
-        sp_w = (sb_w - (len(speeds) - 1) * 4) // len(speeds)
+        speeds = [("1x", 1), ("2x", 2), ("5x", 5), ("10x", 10), ("MAX", 50)]
+        sp_w = (sb_w - (len(speeds) - 1) * 6) // len(speeds)
         for i, (label, val) in enumerate(speeds):
             self.buttons.append({
                 "id": f"speed_{val}",
                 "label": label,
-                "rect": pygame.Rect(sb_x + i * (sp_w + 4), btn_y, sp_w, 24),
+                "rect": pygame.Rect(sb_x + i * (sp_w + 6), btn_y, sp_w, 26),
                 "val": val,
                 "category": "speed"
             })
 
-        # 3. Algorithm Selector (Vertical Buttons)
-        btn_y = 205
-        algos = [
-            ("BACKTRACKING", "Quay lui (Backtracking Step-by-Step)"),
-            ("MIN_CONFLICTS_MAX", "Min-Conflicts (Max-Conflict Heuristic)"),
-            ("MIN_CONFLICTS_TABU", "Min-Conflicts (Hybrid-Tabu Heuristic)"),
-            ("MIN_CONFLICTS_RANDOM", "Min-Conflicts (Standard Random)"),
-            ("SAT", "Glucose3 PySAT Solver (Mệnh đề Logic)"),
-            ("BROWSER", "Duyệt tất cả trường hợp nghiệm (All Solutions)"),
-            ("MANUAL", "Chế độ tương tác tự đặt hậu (Manual Sandbox)"),
-        ]
-        algo_btn_h = 25
-        for algo_id, label in algos:
-            self.buttons.append({
-                "id": f"algo_{algo_id}",
-                "label": label,
-                "rect": pygame.Rect(sb_x, btn_y, sb_w, algo_btn_h),
-                "algo": algo_id,
-                "category": "algo"
-            })
-            btn_y += algo_btn_h + 4
-
-        # 4. Board Size N Selector
-        btn_y += 10
+        # 3. Board Size N Selector (Row 3)
+        btn_y += 32
         n_sizes = [4, 6, 8, 10, 12, 16]
-        n_w = (sb_w - 40 - (len(n_sizes) - 1) * 4) // len(n_sizes)
-        self.buttons.append({"id": "n_dec", "label": "[-]", "rect": pygame.Rect(sb_x, btn_y, 22, 24), "category": "n_change"})
+        n_w = (sb_w - 56 - (len(n_sizes) - 1) * 4) // len(n_sizes)
+        self.buttons.append({"id": "n_dec", "label": "-", "rect": pygame.Rect(sb_x, btn_y, 24, 26), "category": "n_change"})
         for i, val in enumerate(n_sizes):
             self.buttons.append({
                 "id": f"n_{val}",
-                "label": str(val),
-                "rect": pygame.Rect(sb_x + 26 + i * (n_w + 4), btn_y, n_w, 24),
+                "label": f"N={val}",
+                "rect": pygame.Rect(sb_x + 28 + i * (n_w + 4), btn_y, n_w, 26),
                 "n_val": val,
                 "category": "n_select"
             })
-        self.buttons.append({"id": "n_inc", "label": "[+]", "rect": pygame.Rect(sb_x + sb_w - 22, btn_y, 22, 24), "category": "n_change"})
+        self.buttons.append({"id": "n_inc", "label": "+", "rect": pygame.Rect(sb_x + sb_w - 24, btn_y, 24, 26), "category": "n_change"})
 
-        # 5. All-Solutions Navigator (for BROWSER mode)
-        btn_y += 36
-        nav_w = (sb_w - 8) // 2
-        self.buttons.append({"id": "btn_sol_prev", "label": "◀ Nghiệm trước", "rect": pygame.Rect(sb_x, btn_y, nav_w, 26), "category": "browser_nav"})
-        self.buttons.append({"id": "btn_sol_next", "label": "Nghiệm sau ▶", "rect": pygame.Rect(sb_x + nav_w + 8, btn_y, nav_w, 26), "category": "browser_nav"})
+        # 4. Algorithm Selector (Clean 2-Column Grid)
+        btn_y = 190
+        algos = [
+            ("BACKTRACKING", "Backtracking (DFS)"),
+            ("SAT", "PySAT Glucose3 (CNF)"),
+            ("MIN_CONFLICTS_MAX", "Min-Conflicts (Max)"),
+            ("MIN_CONFLICTS_TABU", "Min-Conflicts (Tabu)"),
+            ("MIN_CONFLICTS_RANDOM", "Min-Conflicts (Random)"),
+            ("MANUAL", "Manual Sandbox"),
+        ]
+        half_w = (sb_w - 8) // 2
+        algo_btn_h = 28
+        for idx, (algo_id, label) in enumerate(algos):
+            r_idx = idx // 2
+            c_idx = idx % 2
+            bx = sb_x + c_idx * (half_w + 8)
+            by = btn_y + r_idx * (algo_btn_h + 6)
+            self.buttons.append({
+                "id": f"algo_{algo_id}",
+                "label": label,
+                "rect": pygame.Rect(bx, by, half_w, algo_btn_h),
+                "algo": algo_id,
+                "category": "algo"
+            })
+
+        # 5. All-Solutions Browser Row
+        browser_y = btn_y + 3 * (algo_btn_h + 6)
+        self.buttons.append({
+            "id": "algo_BROWSER",
+            "label": "Solutions Browser",
+            "rect": pygame.Rect(sb_x, browser_y, half_w, algo_btn_h),
+            "algo": "BROWSER",
+            "category": "algo"
+        })
+        nav_w = (half_w - 6) // 2
+        self.buttons.append({"id": "btn_sol_prev", "label": "< PREV", "rect": pygame.Rect(sb_x + half_w + 8, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
+        self.buttons.append({"id": "btn_sol_next", "label": "NEXT >", "rect": pygame.Rect(sb_x + half_w + 8 + nav_w + 6, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
 
     def _init_solver(self) -> None:
         """Initializes or resets the active solver generator and state."""
@@ -307,22 +389,22 @@ class NQueensGUI:
         if self.algorithm_mode == "BACKTRACKING":
             solver = BacktrackingSolver(find_all=True)
             self.step_generator = solver.solve_step_generator(self.n, find_all=True)
-            self.status_message = f"Khởi tạo Backtracking cho N={self.n}. Nhấn PLAY để xem đặt hậu từng bước."
+            self.status_message = f"Initialized Backtracking for N={self.n}. Click PLAY to observe step-by-step search."
 
         elif self.algorithm_mode == "MIN_CONFLICTS_MAX":
             gen = StepMinConflictsGenerator(heuristic=MaxConflictSelector(), max_steps=1500)
             self.step_generator = gen.run(self.n)
-            self.status_message = f"Min-Conflicts (Max-Conflict). Khởi tạo bàn cờ hoán vị, tối ưu O(1)."
+            self.status_message = f"Min-Conflicts (Max-Conflict). Initialized permutation board, O(1) conflict delta."
 
         elif self.algorithm_mode == "MIN_CONFLICTS_TABU":
             gen = StepMinConflictsGenerator(heuristic=HybridTabuSelector(), max_steps=1500)
             self.step_generator = gen.run(self.n)
-            self.status_message = f"Min-Conflicts (Hybrid-Tabu). Kết hợp Random Walk & Tabu Search chống kẹt."
+            self.status_message = f"Min-Conflicts (Hybrid-Tabu). Combining Random Walk & Tabu tenure to prevent cycling."
 
         elif self.algorithm_mode == "MIN_CONFLICTS_RANDOM":
             gen = StepMinConflictsGenerator(heuristic=RandomSelector(), max_steps=1500)
             self.step_generator = gen.run(self.n)
-            self.status_message = f"Min-Conflicts tiêu chuẩn (Bài giảng 08 - Slide 30). Chọn ngẫu nhiên biến."
+            self.status_message = f"Standard Min-Conflicts (Russell & Norvig). Selecting random conflicted queen."
 
         elif self.algorithm_mode == "SAT":
             self._run_sat_solver()
@@ -333,7 +415,7 @@ class NQueensGUI:
         elif self.algorithm_mode == "MANUAL":
             self.board = [-1] * self.n
             self.step_generator = None
-            self.status_message = "Chế độ thủ công: Click chuột vào bàn cờ để đặt hoặc gỡ quân hậu!"
+            self.status_message = "Interactive Sandbox: Click any chessboard square to place or remove queens!"
 
         # Save initial state in history
         self._record_history()
@@ -358,21 +440,21 @@ class NQueensGUI:
                         "board": list(current_board),
                         "col": c,
                         "row": final_sol[c],
-                        "msg": f"Glucose3 SAT Model: Gán biến X_{final_sol[c]},{c} = TRUE (Cột {c})."
+                        "msg": f"Glucose3 Model: Boolean variable X_{final_sol[c]},{c} = TRUE (Col {c})."
                     }
                 yield {
                     "event": "SOLVED",
                     "board": list(final_sol),
                     "col": -1,
                     "row": -1,
-                    "msg": f"🎉 PySAT Glucose3 giải thành công trong {self.execution_time_ms:.3f} ms!"
+                    "msg": f"PySAT Glucose3 solved successfully in {self.execution_time_ms:.3f} ms!"
                 }
 
             self.step_generator = sat_gen()
-            self.status_message = f"Glucose3 PySAT đã tìm ra nghiệm trong {self.execution_time_ms:.3f} ms. Nhấn PLAY để đặt từng quân."
+            self.status_message = f"Glucose3 PySAT solved in {self.execution_time_ms:.3f} ms. Click PLAY to watch animated placement."
         else:
             self.step_generator = None
-            self.status_message = f"Glucose3 SAT không tìm thấy nghiệm cho N={self.n}."
+            self.status_message = f"Glucose3 SAT could not find a valid solution for N={self.n}."
 
     def _load_all_solutions_for_browser(self) -> None:
         """Computes and caches all valid solutions for fast interactive browsing."""
@@ -387,11 +469,11 @@ class NQueensGUI:
         if self.cached_all_solutions:
             self.board = list(self.cached_all_solutions[0])
             known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-            self.status_message = (f"Đã nạp toàn bộ {len(self.cached_all_solutions)} trường hợp nghiệm "
-                                   f"({t_elapsed:.1f} ms). Xem nghiệm 1/{known_total}.")
+            self.status_message = (f"Loaded all {len(self.cached_all_solutions)} valid configurations "
+                                   f"in {t_elapsed:.1f} ms. Viewing solution 1/{known_total}.")
         else:
             self.board = [-1] * self.n
-            self.status_message = "Không có nghiệm cho cấu hình này."
+            self.status_message = "No valid solutions exist for this configuration."
 
     def _record_history(self) -> None:
         """Saves current frame snapshot to enable step-by-step backward undo."""
@@ -409,7 +491,6 @@ class NQueensGUI:
             "row_conflicts_eval": list(self.row_conflicts_eval),
             "status_message": self.status_message,
         }
-        # If we went backward and then advanced, prune forward history
         if self.history_index < len(self.step_history) - 1:
             self.step_history = self.step_history[: self.history_index + 1]
         self.step_history.append(snapshot)
@@ -417,7 +498,6 @@ class NQueensGUI:
 
     def step_forward(self) -> bool:
         """Executes one step from the active generator or advances solution index."""
-        # If user is reviewing past history
         if self.history_index < len(self.step_history) - 1:
             self.history_index += 1
             self._restore_history(self.history_index)
@@ -428,7 +508,7 @@ class NQueensGUI:
                 self.current_solution_idx = (self.current_solution_idx + 1) % len(self.cached_all_solutions)
                 self.board = list(self.cached_all_solutions[self.current_solution_idx])
                 known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-                self.status_message = f"Trường hợp nghiệm {self.current_solution_idx + 1} / {known_total}."
+                self.status_message = f"Viewing solution case {self.current_solution_idx + 1} / {known_total}."
                 self._update_conflicts()
                 self._record_history()
             return True
@@ -484,7 +564,7 @@ class NQueensGUI:
             return True
         except StopIteration:
             self.is_playing = False
-            self.status_message = "Thuật toán đã hoàn tất toàn bộ quá trình tìm kiếm."
+            self.status_message = "Search algorithm completed the entire exploration tree."
             return False
 
     def step_backward(self) -> bool:
@@ -552,11 +632,11 @@ class NQueensGUI:
                 if self.board[col] == row:
                     # Remove queen
                     self.board[col] = -1
-                    self.status_message = f"Đã gỡ con hậu khỏi ô ({row}, {col})."
+                    self.status_message = f"Removed Queen from square ({row}, {col})."
                 else:
                     # Place or move queen
                     self.board[col] = row
-                    self.status_message = f"Đã đặt con hậu vào ô ({row}, {col})."
+                    self.status_message = f"Placed Queen onto square ({row}, {col})."
 
                 self.algorithm_mode = "MANUAL"
                 self.step_generator = None
@@ -569,7 +649,7 @@ class NQueensGUI:
 
         if bid == "btn_play":
             self.is_playing = not self.is_playing
-            btn["label"] = "⏸ Pause" if self.is_playing else "▶ Play"
+            btn["label"] = "PAUSE" if self.is_playing else "START / PLAY"
 
         elif bid == "btn_step_fwd":
             self.is_playing = False
@@ -619,7 +699,7 @@ class NQueensGUI:
                 self.current_solution_idx = (self.current_solution_idx - 1) % len(self.cached_all_solutions)
                 self.board = list(self.cached_all_solutions[self.current_solution_idx])
                 known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-                self.status_message = f"Trường hợp nghiệm {self.current_solution_idx + 1} / {known_total}."
+                self.status_message = f"Viewing solution case {self.current_solution_idx + 1} / {known_total}."
                 self._update_conflicts()
                 self._record_history()
 
@@ -633,7 +713,6 @@ class NQueensGUI:
 
         running = True
         while running:
-            # Step timing based on speed multiplier
             cur_time = time.perf_counter()
             step_interval = 0.45 / self.speed_multiplier if self.speed_multiplier < 50 else 0.005
 
@@ -676,7 +755,6 @@ class NQueensGUI:
 
             # Auto-advance step when playing
             if self.is_playing and (cur_time - self.last_step_time) >= step_interval:
-                # In Instant mode (speed 50x), take multiple steps per frame
                 steps_per_frame = 8 if self.speed_multiplier == 50 else 1
                 for _ in range(steps_per_frame):
                     adv = self.step_forward()
@@ -696,16 +774,16 @@ class NQueensGUI:
         """Renders chessboard, pieces, laser conflict beams, and HUD."""
         self.screen.fill(self.COLOR_BG)
 
-        # 1. Draw Chessboard
+        # 1. Draw Chessboard with textured or shaded tiles
         self._draw_board()
 
         # 2. Draw Candidate Rows & Conflict Numbers
         self._draw_candidate_overlays()
 
-        # 3. Draw Laser Attack Lines
+        # 3. Draw Laser Attack Lines and impact particles
         self._draw_conflict_lasers()
 
-        # 4. Draw Royal Queens
+        # 4. Draw Queen Pieces (PNG assets or vector crowns)
         self._draw_queens()
 
         # 5. Draw Right Sidebar & Telemetry HUD
@@ -722,30 +800,39 @@ class NQueensGUI:
 
         # Board drop shadow
         shadow_rect = pygame.Rect(bx + 6, by + 6, self.board_rect.w, self.board_rect.h)
-        pygame.draw.rect(self.screen, (10, 12, 18), shadow_rect, border_radius=6)
+        pygame.draw.rect(self.screen, (8, 10, 16), shadow_rect, border_radius=6)
 
         # Outer border frame
         frame_rect = pygame.Rect(bx - 3, by - 3, self.board_rect.w + 6, self.board_rect.h + 6)
         pygame.draw.rect(self.screen, self.COLOR_TILE_BORDER, frame_rect, border_radius=6)
+
+        tile_light_asset = self.scaled_assets.get("tile_light")
+        tile_dark_asset = self.scaled_assets.get("tile_dark")
 
         # Draw alternating squares
         for r in range(self.n):
             for c in range(self.n):
                 cell_rect = pygame.Rect(bx + c * cs, by + r * cs, cs, cs)
                 is_light = (r + c) % 2 == 0
-                tile_color = self.COLOR_TILE_LIGHT if is_light else self.COLOR_TILE_DARK
+
+                # Render textured asset if available
+                if is_light and tile_light_asset:
+                    self.screen.blit(tile_light_asset, cell_rect.topleft)
+                elif not is_light and tile_dark_asset:
+                    self.screen.blit(tile_dark_asset, cell_rect.topleft)
+                else:
+                    tile_color = self.COLOR_TILE_LIGHT if is_light else self.COLOR_TILE_DARK
+                    pygame.draw.rect(self.screen, tile_color, cell_rect)
 
                 # Subtle highlight on active candidate column
                 if c == self.candidate_col:
-                    if is_light:
-                        tile_color = (245, 245, 220)
-                    else:
-                        tile_color = (105, 128, 160)
+                    glow_surf = pygame.Surface((cs, cs), pygame.SRCALPHA)
+                    glow_surf.fill((255, 255, 200, 35))
+                    self.screen.blit(glow_surf, cell_rect.topleft)
 
-                pygame.draw.rect(self.screen, tile_color, cell_rect)
-                pygame.draw.rect(self.screen, (35, 45, 62), cell_rect, 1)
+                pygame.draw.rect(self.screen, (30, 40, 56), cell_rect, 1)
 
-        # Draw Column labels (A, B, C...) and Row labels (1, 2, 3...)
+        # Column labels (A, B, C...) and Row labels (1, 2, 3...)
         for c in range(self.n):
             col_letter = chr(ord('A') + c) if self.n <= 26 else str(c)
             lbl = self.fonts["coords"].render(col_letter, True, self.COLOR_COORD_TEXT)
@@ -772,7 +859,6 @@ class NQueensGUI:
                 c_val = self.row_conflicts_eval[r]
                 rect = pygame.Rect(bx + c * cs, by + r * cs, cs, cs)
 
-                # Overlay tint
                 if c_val == min_c:
                     tint = pygame.Surface((cs, cs), pygame.SRCALPHA)
                     tint.fill((46, 204, 113, 85))  # Green tint for min conflict
@@ -818,7 +904,7 @@ class NQueensGUI:
                 pygame.draw.rect(self.screen, (230, 126, 34), rect, 3)
 
     def _draw_conflict_lasers(self) -> None:
-        """Draws glowing red conflict lines connecting any queens that attack each other."""
+        """Draws glowing laser attack beams with flare particles connecting conflicting queens."""
         if not self.active_conflicts:
             return
 
@@ -827,30 +913,35 @@ class NQueensGUI:
         cs = self.cell_size
 
         pulse = 0.5 + 0.5 * math.sin(self.anim_tick * 0.2)
-        alpha = int(140 + 100 * pulse)
+        flare_asset = self.scaled_assets.get("spark_flare")
 
         for (r1, c1), (r2, c2) in self.active_conflicts:
             p1 = (bx + c1 * cs + cs // 2, by + r1 * cs + cs // 2)
             p2 = (bx + c2 * cs + cs // 2, by + r2 * cs + cs // 2)
 
             # Draw outer glow line
-            pygame.draw.line(self.screen, (255, 80, 80), p1, p2, 4)
+            pygame.draw.line(self.screen, (255, 60, 60), p1, p2, 4)
             # Draw bright laser core
             pygame.draw.line(self.screen, (255, 230, 230), p1, p2, 2)
 
-            # Draw warning burst circle on each end
-            pygame.draw.circle(self.screen, (240, 50, 50), p1, 7)
-            pygame.draw.circle(self.screen, (255, 255, 255), p1, 3)
-            pygame.draw.circle(self.screen, (240, 50, 50), p2, 7)
-            pygame.draw.circle(self.screen, (255, 255, 255), p2, 3)
+            # Blit spark flare asset or draw circles
+            if flare_asset:
+                f_w = flare_asset.get_width()
+                f_h = flare_asset.get_height()
+                self.screen.blit(flare_asset, (p1[0] - f_w // 2, p1[1] - f_h // 2))
+                self.screen.blit(flare_asset, (p2[0] - f_w // 2, p2[1] - f_h // 2))
+            else:
+                pygame.draw.circle(self.screen, (240, 50, 50), p1, 7)
+                pygame.draw.circle(self.screen, (255, 255, 255), p1, 3)
+                pygame.draw.circle(self.screen, (240, 50, 50), p2, 7)
+                pygame.draw.circle(self.screen, (255, 255, 255), p2, 3)
 
     def _draw_queens(self) -> None:
-        """Draws high-resolution royal crowns for all queens on the board."""
+        """Draws high-resolution queen pieces using PNG assets or vector crowns."""
         bx = self.board_rect.x
         by = self.board_rect.y
         cs = self.cell_size
 
-        # Find which columns have conflicts
         conflicted_cols = set()
         for (r1, c1), (r2, c2) in self.active_conflicts:
             conflicted_cols.add(c1)
@@ -864,24 +955,32 @@ class NQueensGUI:
             cx = bx + c * cs + cs // 2
             cy = by + r * cs + cs // 2
 
-            # Determine piece color state
+            # Determine piece asset key & theme
             if c in conflicted_cols:
+                asset_key = "queen_conflict"
                 theme = "CONFLICT"
             elif c == self.candidate_col and self.candidate_type == "SAFE":
+                asset_key = "queen_safe"
                 theme = "GREEN"
             elif c == self.candidate_col:
+                asset_key = "queen_candidate"
                 theme = "CYAN"
+            elif self.current_conflicts == 0 and self.solutions_found > 0:
+                asset_key = "queen_safe"
+                theme = "GREEN"
             else:
+                asset_key = "queen_gold"
                 theme = "GOLD"
 
-            self._draw_vector_queen(cx, cy, cs, theme)
+            # Prefer scaled PNG asset
+            if asset_key in self.scaled_assets:
+                img = self.scaled_assets[asset_key]
+                self.screen.blit(img, (cx - img.get_width() // 2, cy - img.get_height() // 2))
+            else:
+                self._draw_vector_queen(cx, cy, cs, theme)
 
     def _draw_vector_queen(self, cx: int, cy: int, size: int, theme: str) -> None:
-        """
-        Draws a crisp scalable vector queen crown with golden pearls,
-        beveled pedestal base, and jewel accents.
-        """
-        # Sizing ratios
+        """Fallback crisp scalable vector queen crown."""
         w = int(size * 0.72)
         h = int(size * 0.68)
         left = cx - w // 2
@@ -889,7 +988,6 @@ class NQueensGUI:
         bottom = cy + h // 2 - int(size * 0.06)
         top = cy - h // 2 + int(size * 0.08)
 
-        # Color schemes
         if theme == "CONFLICT":
             base_col = (235, 65, 65)
             shadow_col = (160, 30, 30)
@@ -911,11 +1009,11 @@ class NQueensGUI:
             pearl_col = (255, 245, 180)
             gem_col = (230, 50, 50)
 
-        # 1. Drop shadow beneath piece
+        # Drop shadow beneath piece
         shadow_rect = pygame.Rect(left + int(w * 0.1), bottom - int(h * 0.08), int(w * 0.8), int(h * 0.22))
-        pygame.draw.ellipse(self.screen, (20, 24, 34), shadow_rect)
+        pygame.draw.ellipse(self.screen, (16, 20, 30), shadow_rect)
 
-        # 2. Crown 5-point polygon vertices
+        # Crown 5-point polygon vertices
         p_left = (left, top + int(h * 0.22))
         p_in1 = (cx - int(w * 0.24), cy - int(h * 0.02))
         p_mid = (cx, top)
@@ -926,35 +1024,33 @@ class NQueensGUI:
 
         crown_poly = [b_left, p_left, p_in1, p_mid, p_in2, p_right, b_right]
 
-        # Draw crown body with shadow edge
         pygame.draw.polygon(self.screen, shadow_col, crown_poly)
-        # Inner fill slightly shifted
         inner_poly = [(px, py - 1) for px, py in crown_poly]
         pygame.draw.polygon(self.screen, base_col, inner_poly)
-        pygame.draw.polygon(self.screen, (30, 35, 45), crown_poly, 2)
+        pygame.draw.polygon(self.screen, (25, 30, 42), crown_poly, 2)
 
-        # 3. Golden pearls on 5 tips
+        # Pearls on 5 tips
         pearl_r = max(2, int(size * 0.055))
         tips = [p_left, p_in1, p_mid, p_in2, p_right]
         for tx, ty in tips:
             pygame.draw.circle(self.screen, shadow_col, (tx, ty), pearl_r + 1)
             pygame.draw.circle(self.screen, pearl_col, (tx, ty - 1), pearl_r)
 
-        # 4. Pedestal base rim
+        # Pedestal base rim
         base_h = max(3, int(h * 0.14))
         base_rect = pygame.Rect(left + int(w * 0.05), bottom - base_h, int(w * 0.9), base_h)
         pygame.draw.rect(self.screen, shadow_col, base_rect, border_radius=3)
         pygame.draw.rect(self.screen, base_col, pygame.Rect(base_rect.x, base_rect.y - 1, base_rect.w, base_rect.h - 1), border_radius=3)
-        pygame.draw.rect(self.screen, (30, 35, 45), base_rect, 1, border_radius=3)
+        pygame.draw.rect(self.screen, (25, 30, 42), base_rect, 1, border_radius=3)
 
-        # 5. Center jewel in crown
+        # Center jewel
         gem_r = max(2, int(size * 0.045))
         gem_y = cy + int(h * 0.1)
         pygame.draw.circle(self.screen, shadow_col, (cx, gem_y), gem_r + 1)
         pygame.draw.circle(self.screen, gem_col, (cx, gem_y), gem_r)
 
     def _draw_sidebar(self) -> None:
-        """Renders the complete telemetry cards, metrics, and interactive control deck."""
+        """Renders the redesigned, clean telemetry cards and interactive control deck."""
         sb_x = self.width - self.sidebar_width
         sb_w = self.sidebar_width
         sb_h = self.height
@@ -964,55 +1060,60 @@ class NQueensGUI:
         pygame.draw.rect(self.screen, self.COLOR_SIDEBAR_BG, sidebar_rect)
         pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (sb_x, 0), (sb_x, sb_h), 2)
 
-        # App Title & Header
-        title_surf = self.fonts["title"].render("N-QUEENS TACTICAL DECK", True, self.COLOR_TEXT)
-        sub_surf = self.fonts["small"].render("Course 503043 • Propositional Logic & Local Search • TDTU", True, self.COLOR_TEXT_DIM)
-        self.screen.blit(title_surf, (sb_x + 16, 16))
-        self.screen.blit(sub_surf, (sb_x + 16, 42))
+        # Header with crown emblem asset
+        emblem = self.scaled_assets.get("crown_emblem")
+        text_start_x = sb_x + 16
+        if emblem:
+            self.screen.blit(emblem, (sb_x + 16, 14))
+            text_start_x = sb_x + 58
 
-        # Divider
-        pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (sb_x + 16, 62), (sb_x + sb_w - 16, 62), 1)
+        title_surf = self.fonts["title"].render("N-QUEENS AI VISUALIZER", True, self.COLOR_TEXT)
+        sub_surf = self.fonts["small"].render("Course 503043 - Propositional Logic & Local Search", True, self.COLOR_TEXT_DIM)
+        self.screen.blit(title_surf, (text_start_x, 12))
+        self.screen.blit(sub_surf, (text_start_x, 36))
 
-        # Telemetry Summary Bar (Top quick stats)
-        bar_y = 70
-        stat_col_w = (sb_w - 32) // 3
-        # 1. Total Cases Tested
-        self._draw_quick_stat(sb_x + 16, bar_y, stat_col_w, "TRƯỜNG HỢP XÉT", f"{self.cases_explored:,}", self.COLOR_QUEEN_CYAN)
-        # 2. Solutions Found
-        known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, "?")
-        sol_text = f"{self.solutions_found}/{known_total}"
-        sol_col = self.COLOR_SUCCESS_GREEN if self.solutions_found > 0 else self.COLOR_TEXT
-        self._draw_quick_stat(sb_x + 16 + stat_col_w, bar_y, stat_col_w, "NGHIỆM ĐẠT ĐƯỢC", sol_text, sol_col)
-        # 3. Current Conflicts
-        c_text = f"{self.current_conflicts} Xung đột"
-        c_col = self.COLOR_SUCCESS_GREEN if self.current_conflicts == 0 else self.COLOR_QUEEN_CONFLICT
-        self._draw_quick_stat(sb_x + 16 + 2 * stat_col_w, bar_y, stat_col_w, "XUNG ĐỘT", c_text, c_col)
+        # Divider line
+        pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (sb_x + 16, 56), (sb_x + sb_w - 16, 56), 1)
 
-        # Render Interactive Buttons
+        # Section Label for Algorithms
+        algo_lbl = self.fonts["small"].render("SELECT ALGORITHM / SOLVER MODE:", True, self.COLOR_TEXT_DIM)
+        self.screen.blit(algo_lbl, (sb_x + 16, 172))
+
+        # Sync PLAY/PAUSE button label dynamically
         for btn in self.buttons:
+            if btn["id"] == "btn_play":
+                btn["label"] = "PAUSE" if self.is_playing else "START / PLAY"
             self._draw_button(btn)
 
-        # Section Card: Propositional Logic CNF Model (Req 1)
-        card_y = 445
-        self._draw_cnf_card(sb_x + 16, card_y, sb_w - 32)
+        # Section Card 1: Clean Search Telemetry Grid (Req 2 & 3)
+        card1_y = 336
+        self._draw_diagnostics_card(sb_x + 16, card1_y, sb_w - 32)
 
-        # Section Card: Live Search Diagnostics & Heuristics
-        card2_y = 615
-        self._draw_diagnostics_card(sb_x + 16, card2_y, sb_w - 32)
+        # Section Card 2: Propositional Logic CNF Summary (Req 1)
+        card2_y = 562
+        self._draw_cnf_card(sb_x + 16, card2_y, sb_w - 32)
 
-    def _draw_quick_stat(self, x: int, y: int, w: int, label: str, val: str, val_color: Tuple[int, int, int]) -> None:
-        """Renders a small telemetry metric tile."""
-        rect = pygame.Rect(x, y, w - 4, 40)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=4)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=4)
+    def _draw_metric_tile(
+        self, x: int, y: int, w: int, h: int,
+        label: str, val: str, val_color: Tuple[int, int, int],
+        sub_label: str = ""
+    ) -> None:
+        """Renders a clean, modern metric box with clear hierarchy and generous spacing."""
+        rect = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, (18, 24, 35), rect, border_radius=6)
+        pygame.draw.rect(self.screen, (38, 50, 70), rect, 1, border_radius=6)
 
-        lbl = self.fonts["small"].render(label, True, self.COLOR_TEXT_DIM)
-        val_surf = self.fonts["header"].render(val, True, val_color)
-        self.screen.blit(lbl, (x + 6, y + 4))
-        self.screen.blit(val_surf, (x + 6, y + 18))
+        lbl_surf = self.fonts["small"].render(label, True, self.COLOR_TEXT_DIM)
+        val_surf = self.fonts["mono_val"].render(val, True, val_color)
+        self.screen.blit(lbl_surf, (x + 10, y + 6))
+        self.screen.blit(val_surf, (x + 10, y + 23))
+
+        if sub_label:
+            sub_surf = self.fonts["small"].render(sub_label, True, self.COLOR_TEXT_MUTED)
+            self.screen.blit(sub_surf, (x + w - sub_surf.get_width() - 8, y + 6))
 
     def _draw_button(self, btn: Dict[str, Any]) -> None:
-        """Draws stylized interactive button with active states."""
+        """Draws stylized interactive button with active states and hover highlights."""
         rect = btn["rect"]
         bid = btn["id"]
         cat = btn.get("category", "")
@@ -1030,107 +1131,171 @@ class NQueensGUI:
         elif bid == "btn_play" and self.is_playing:
             is_active = True
 
-        # Colors
-        if is_active:
-            bg_color = (41, 128, 185)
-            border_color = (52, 152, 219)
+        # Color schemes
+        if bid == "btn_play" and not self.is_playing:
+            bg_color = (22, 135, 85) if not is_hover else (30, 165, 105)
+            border_color = (46, 204, 113)
+            text_color = (255, 255, 255)
+        elif is_active:
+            bg_color = (36, 110, 185)
+            border_color = (64, 169, 255)
             text_color = (255, 255, 255)
         elif is_hover:
-            bg_color = (46, 58, 80)
-            border_color = (70, 90, 125)
+            bg_color = (42, 54, 76)
+            border_color = (68, 88, 122)
             text_color = (255, 255, 255)
         else:
             bg_color = self.COLOR_CARD_BG
             border_color = self.COLOR_CARD_BORDER
             text_color = self.COLOR_TEXT
 
-        pygame.draw.rect(self.screen, bg_color, rect, border_radius=4)
-        pygame.draw.rect(self.screen, border_color, rect, 1, border_radius=4)
+        pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
+        pygame.draw.rect(self.screen, border_color, rect, 1, border_radius=5)
 
-        lbl_surf = self.fonts["body_bold" if is_active else "body"].render(btn["label"], True, text_color)
+        lbl_surf = self.fonts["body_bold" if (is_active or bid == "btn_play") else "body"].render(btn["label"], True, text_color)
         self.screen.blit(lbl_surf, (rect.centerx - lbl_surf.get_width() // 2, rect.centery - lbl_surf.get_height() // 2))
 
-    def _draw_cnf_card(self, x: int, y: int, w: int) -> None:
-        """Displays Propositional Logic CNF breakdown (Requirement 1 & 2 formulas)."""
-        card_h = 160
+    def _draw_diagnostics_card(self, x: int, y: int, w: int) -> None:
+        """Displays live search metrics in a clean, scannable 2x3 grid."""
+        card_h = 214
         rect = pygame.Rect(x, y, w, card_h)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=6)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=6)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=8)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=8)
 
         # Header banner
-        hdr_rect = pygame.Rect(x, y, w, 26)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_HEADER, hdr_rect, border_top_left_radius=6, border_top_right_radius=6)
-        hdr_lbl = self.fonts["header"].render("MÔ HÌNH PROPOSITIONAL LOGIC & CNF (REQ 1)", True, self.COLOR_QUEEN_GOLD)
-        self.screen.blit(hdr_lbl, (x + 10, y + 5))
+        hdr_rect = pygame.Rect(x, y, w, 30)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_HEADER, hdr_rect, border_top_left_radius=8, border_top_right_radius=8)
+        hdr_lbl = self.fonts["header"].render("LIVE SEARCH METRICS", True, self.COLOR_QUEEN_CYAN)
+        self.screen.blit(hdr_lbl, (x + 12, y + 6))
 
-        # Metrics content
+        # Active mode badge on right of header
+        mode_map = {
+            "BACKTRACKING": "DFS BACKTRACK",
+            "SAT": "GLUCOSE3 SAT",
+            "MIN_CONFLICTS_MAX": "MIN-CONF (MAX)",
+            "MIN_CONFLICTS_TABU": "MIN-CONF (TABU)",
+            "MIN_CONFLICTS_RANDOM": "MIN-CONF (RAND)",
+            "BROWSER": "SOL BROWSER",
+            "MANUAL": "SANDBOX",
+        }
+        mode_str = mode_map.get(self.algorithm_mode, self.algorithm_mode)
+        badge_surf = self.fonts["badge"].render(mode_str, True, self.COLOR_QUEEN_GOLD)
+        self.screen.blit(badge_surf, (x + w - badge_surf.get_width() - 12, y + 8))
+
+        # 2x3 Metric Tiles Grid
+        pad = 10
+        tile_w = (w - 3 * pad) // 2
+        tile_h = 48
+        gy = y + 40
+
+        # Row 1: Conflicts & Solutions
+        c_val = f"{self.current_conflicts} Attacking" if self.current_conflicts > 0 else "0 (Valid)"
+        c_col = self.COLOR_QUEEN_CONFLICT if self.current_conflicts > 0 else self.COLOR_SUCCESS_GREEN
+        self._draw_metric_tile(x + pad, gy, tile_w, tile_h, "CONFLICTS", c_val, c_col)
+
+        known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, "?")
+        sol_val = f"{self.solutions_found} / {known_total}"
+        sol_col = self.COLOR_SUCCESS_GREEN if self.solutions_found > 0 else self.COLOR_TEXT
+        self._draw_metric_tile(x + 2 * pad + tile_w, gy, tile_w, tile_h, "SOLUTIONS FOUND", sol_val, sol_col)
+
+        # Row 2: States Tested & Search Steps
+        gy += tile_h + 8
+        self._draw_metric_tile(x + pad, gy, tile_w, tile_h, "STATES EXPLORED", f"{self.cases_explored:,}", self.COLOR_QUEEN_CYAN)
+        self._draw_metric_tile(x + 2 * pad + tile_w, gy, tile_w, tile_h, "SEARCH STEPS", f"{self.steps_count:,}", self.COLOR_TEXT)
+
+        # Row 3: Backtracks / Restarts & Execution Time
+        gy += tile_h + 8
+        if self.algorithm_mode.startswith("MIN_CONFLICTS"):
+            br_lbl = "RANDOM RESTARTS"
+            br_val = f"{self.restarts_count:,}"
+        else:
+            br_lbl = "BACKTRACKS"
+            br_val = f"{self.backtracks_count:,}"
+        self._draw_metric_tile(x + pad, gy, tile_w, tile_h, br_lbl, br_val, self.COLOR_AMBER_ALERT)
+        self._draw_metric_tile(x + 2 * pad + tile_w, gy, tile_w, tile_h, "EXECUTION TIME", f"{self.execution_time_ms:.2f} ms", self.COLOR_QUEEN_GOLD)
+
+    def _draw_cnf_card(self, x: int, y: int, w: int) -> None:
+        """Displays Propositional Logic CNF statistics in a clean 2x2 summary grid."""
+        card_h = 200
+        rect = pygame.Rect(x, y, w, card_h)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=8)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=8)
+
+        # Header banner
+        hdr_rect = pygame.Rect(x, y, w, 30)
+        pygame.draw.rect(self.screen, self.COLOR_CARD_HEADER, hdr_rect, border_top_left_radius=8, border_top_right_radius=8)
+        hdr_lbl = self.fonts["header"].render(f"CNF PROPOSITIONAL LOGIC (N = {self.n})", True, self.COLOR_QUEEN_GOLD)
+        self.screen.blit(hdr_lbl, (x + 12, y + 6))
+
+        match_surf = self.fonts["badge"].render("VERIFIED", True, self.COLOR_SUCCESS_GREEN)
+        self.screen.blit(match_surf, (x + w - match_surf.get_width() - 12, y + 8))
+
         n = self.n
         vars_count = self.cnf_stats.get("variables", n * n)
         total_clauses = self.cnf_stats.get("total_clauses", 0)
-        theo_total = self.cnf_stats.get("theoretical_total", 0)
         diag_amo = self.cnf_stats.get("diagonal_amo", 0)
         row_amo = self.cnf_stats.get("row_amo", 0)
+        row_col_clauses = 2 * n + 2 * row_amo
 
-        lines = [
-            f"• Biến Boolean X_r,c: {vars_count} biến (DIMACS [1..{vars_count}])",
-            f"• Mệnh đề Hàng & Cột (ALO + AMO): 2*N + N²*(N-1) = {4 * n + 2 * row_amo}",
-            f"• Mệnh đề Đường chéo (AMO): N*(N-1)*(2N-1)/3 = {diag_amo}",
-            f"• Tổng số mệnh đề thực tế: {total_clauses:,} clauses",
-            f"• Công thức lý thuyết: {theo_total:,} clauses  (Khớp 100% ✓)",
-        ]
+        pad = 10
+        tile_w = (w - 3 * pad) // 2
+        tile_h = 50
+        gy = y + 40
 
-        text_y = y + 32
-        for line in lines:
-            col = self.COLOR_SUCCESS_GREEN if "Khớp" in line else self.COLOR_TEXT_DIM
-            surf = self.fonts["small"].render(line, True, col)
-            self.screen.blit(surf, (x + 10, text_y))
-            text_y += 22
+        # Row 1: Variables & Row/Col Clauses
+        self._draw_metric_tile(
+            x + pad, gy, tile_w, tile_h,
+            "BOOLEAN VARIABLES", f"{vars_count:,}", self.COLOR_TEXT, "N x N"
+        )
+        self._draw_metric_tile(
+            x + 2 * pad + tile_w, gy, tile_w, tile_h,
+            "ROW & COL CLAUSES", f"{row_col_clauses:,}", self.COLOR_QUEEN_CYAN, "ALO + AMO"
+        )
 
-    def _draw_diagnostics_card(self, x: int, y: int, w: int) -> None:
-        """Displays live telemetry counters: steps, backtracks, latency."""
-        card_h = 135
-        rect = pygame.Rect(x, y, w, card_h)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BG, rect, border_radius=6)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_BORDER, rect, 1, border_radius=6)
+        # Row 2: Diagonal Clauses & Total Clauses
+        gy += tile_h + 8
+        self._draw_metric_tile(
+            x + pad, gy, tile_w, tile_h,
+            "DIAGONAL CLAUSES", f"{diag_amo:,}", self.COLOR_QUEEN_CYAN, "AMO"
+        )
+        self._draw_metric_tile(
+            x + 2 * pad + tile_w, gy, tile_w, tile_h,
+            "TOTAL CNF CLAUSES", f"{total_clauses:,}", self.COLOR_SUCCESS_GREEN, "100% Match"
+        )
 
-        # Header banner
-        hdr_rect = pygame.Rect(x, y, w, 26)
-        pygame.draw.rect(self.screen, self.COLOR_CARD_HEADER, hdr_rect, border_top_left_radius=6, border_top_right_radius=6)
-        hdr_lbl = self.fonts["header"].render("DIAGNOSTICS & THÔNG SỐ TÌM KIẾM", True, self.COLOR_QUEEN_CYAN)
-        self.screen.blit(hdr_lbl, (x + 10, y + 5))
-
-        # Content
-        lines = [
-            f"• Thuật toán đang chạy: {self.algorithm_mode}",
-            f"• Số bước thực thi (Steps): {self.steps_count:,}",
-            f"• Số lần quay lui (Backtracks): {self.backtracks_count:,}",
-            f"• Số lần khởi động lại (Restarts): {self.restarts_count}",
-            f"• Thời gian chạy (Latency): {self.execution_time_ms:.2f} ms",
-        ]
-
-        text_y = y + 30
-        for line in lines:
-            surf = self.fonts["small"].render(line, True, self.COLOR_TEXT_DIM)
-            self.screen.blit(surf, (x + 10, text_y))
-            text_y += 20
+        # Clean Formula Reference Footer
+        fy = gy + tile_h + 10
+        formula_str = f"Formula: 2N + N^2(N-1) + N(N-1)(2N-1)/3 = {total_clauses:,} clauses"
+        f_surf = self.fonts["small"].render(formula_str, True, self.COLOR_TEXT_DIM)
+        self.screen.blit(f_surf, (x + (w - f_surf.get_width()) // 2, fy))
 
     def _draw_status_bar(self) -> None:
-        """Renders live descriptive message ticker at the bottom of the screen."""
+        """Renders live tactical status banner at the bottom of the screen."""
         bar_h = 28
         bar_y = self.height - bar_h
         bar_w = self.width - self.sidebar_width
         rect = pygame.Rect(0, bar_y, bar_w, bar_h)
 
-        pygame.draw.rect(self.screen, (12, 15, 22), rect)
+        pygame.draw.rect(self.screen, (10, 14, 20), rect)
         pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (0, bar_y), (bar_w, bar_y), 1)
 
-        # Status icon badge
-        badge_text = "SOLVED" if self.current_conflicts == 0 and self.solutions_found > 0 else "RUNNING" if self.is_playing else "IDLE"
-        badge_col = self.COLOR_SUCCESS_GREEN if badge_text == "SOLVED" else (52, 152, 219) if badge_text == "RUNNING" else self.COLOR_TEXT_MUTED
+        # Status badge
+        if self.current_conflicts == 0 and self.solutions_found > 0:
+            badge_text = "SOLVED"
+            badge_col = self.COLOR_SUCCESS_GREEN
+        elif self.current_conflicts > 0:
+            badge_text = "CONFLICT"
+            badge_col = self.COLOR_QUEEN_CONFLICT
+        elif self.is_playing:
+            badge_text = "SEARCHING"
+            badge_col = self.COLOR_QUEEN_CYAN
+        else:
+            badge_text = "IDLE"
+            badge_col = self.COLOR_TEXT_MUTED
 
         badge_surf = self.fonts["badge"].render(f"[{badge_text}]", True, badge_col)
         self.screen.blit(badge_surf, (15, bar_y + 6))
 
         # Status narrative message
         msg_surf = self.fonts["body"].render(self.status_message, True, self.COLOR_TEXT)
-        self.screen.blit(msg_surf, (85, bar_y + 6))
+        self.screen.blit(msg_surf, (105, bar_y + 6))

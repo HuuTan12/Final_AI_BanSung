@@ -118,8 +118,8 @@ def visualize_board(
 
     # Title Banner
     if title is None:
-        conflict_msg = f"{len(conflicts)} Xung đột" if conflicts else "Hợp lệ (0 Xung đột) ✓"
-        title = f"Bàn cờ N-Queens (N = {n}) — {conflict_msg}"
+        conflict_msg = f"{len(conflicts)} Conflicts" if conflicts else "Valid (0 Conflicts) ✓"
+        title = f"N-Queens Board (N = {n}) — {conflict_msg}"
 
     ax.set_title(title, fontsize=12, fontweight="bold", pad=10)
     plt.tight_layout()
@@ -138,7 +138,7 @@ def plot_solution_gallery(
     num_to_show = min(len(solutions), max_solutions)
     if num_to_show == 0:
         fig, ax = plt.subplots(figsize=(4, 4))
-        ax.text(0.5, 0.5, "Không có nghiệm", ha="center", va="center")
+        ax.text(0.5, 0.5, "No Solution Found", ha="center", va="center")
         return fig
 
     rows = math.ceil(num_to_show / cols)
@@ -156,13 +156,13 @@ def plot_solution_gallery(
             sol = solutions[idx]
             visualize_board(
                 sol,
-                title=f"Nghiệm #{idx + 1}",
+                title=f"Solution #{idx + 1}",
                 show_conflicts=False,
                 ax=axes[idx]
             )
         else:
             axes[idx].axis("off")
 
-    fig.suptitle(f"Bộ sưu tập {num_to_show}/{len(solutions)} trường hợp nghiệm N-Queens (N = {n})", fontsize=14, fontweight="bold", y=1.02)
+    fig.suptitle(f"N-Queens Gallery: {num_to_show}/{len(solutions)} Configurations (N = {n})", fontsize=14, fontweight="bold", y=1.02)
     plt.tight_layout()
     return fig
