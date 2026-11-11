@@ -28,14 +28,25 @@ class KakuroBacktrackingSolver:
     Bộ giải tìm kiếm quay lui kết hợp lan truyền ràng buộc cho Kakuro.
     """
 
-    def __init__(self, use_ac3: bool = True, use_mrv: bool = True, use_lcv: bool = True, tracer: SolverTracer = None):
+    def __init__(
+        self, 
+        use_ac3: bool = True, 
+        use_mrv: bool = True, 
+        use_lcv: bool = True, 
+        tracer: SolverTracer = None,
+        timeout: Optional[float] = None,
+        arbitrary_var: bool = False
+    ):
         self.use_ac3 = use_ac3
         self.use_mrv = use_mrv
         self.use_lcv = use_lcv
         self.tracer = tracer
+        self.timeout = timeout
+        self.arbitrary_var = arbitrary_var
         self.propagator = ConstraintPropagator(tracer=tracer)
         self.nodes_explored = 0
         self.backtracks = 0
+        self.start_time = 0.0
 
     def solve(self, csp: KakuroCSP) -> KakuroSolveResult:
         """
@@ -45,21 +56,21 @@ class KakuroBacktrackingSolver:
         3. Bắt đầu đệ quy _backtrack(csp).
         4. Ghi nhận kết quả: thời gian, số nút đã duyệt, số lần backtrack.
         """
-        start_time = time.time()
+        self.start_time = time.time()
         self.nodes_explored = 0
         self.backtracks = 0
         # Bước 1: Lọc miền giá trị ban đầu (giao các tổ hợp của run ngang và run dọc)
         if not self.propagator.initial_filtering(csp):
-            exec_time = time.time() - start_time
+            exec_time = time.time() - self.start_time
             return KakuroSolveResult(False, exec_time, self.nodes_explored, self.backtracks, None)
         # Bước 2: Nếu bật AC-3 thì chạy lan truyền ràng buộc toàn diện trước khi quay lui
         if self.use_ac3:
             if not self.propagator.ac3(csp):
-                exec_time = time.time() - start_time
+                exec_time = time.time() - self.start_time
                 return KakuroSolveResult(False, exec_time, self.nodes_explored, self.backtracks, None)
         # Bước 3: Đệ quy tìm kiếm
         is_solved = self._backtrack(csp)
-        exec_time = time.time() - start_time
+        exec_time = time.time() - self.start_time
         solution_grid = csp.get_solution_grid() if is_solved else None
         return KakuroSolveResult(
             is_solved=is_solved,
@@ -72,22 +83,26 @@ class KakuroBacktrackingSolver:
     def _backtrack(self, csp: KakuroCSP) -> bool:
         """
         Đệ quy quay lui (Backtracking Search):
-        1. Kiểm tra điều kiện dừng: Nếu tất cả ô đã gán -> Thành công!
-        2. Chọn biến tiếp theo dùng Heuristic MRV (Minimum Remaining Values).
-        3. Chọn thứ tự giá trị để thử dùng Heuristic LCV (Least Constraining Value).
-        4. Với mỗi giá trị:
-           - Gán giá trị vào ô.
-           - Kiểm tra tính hợp lệ cục bộ (is_partially_valid).
-           - Tỉa miền giá trị láng giềng (Forward Checking).
-           - Nếu hợp lệ -> Gọi đệ quy tiếp tục.
-           - Nếu thất bại -> Hoàn tác (Undo) và thử giá trị khác (Backtrack).
+        1. Kiểm tra timeout (nếu có).
+        2. Kiểm tra điều kiện dừng: Nếu tất cả ô đã gán -> Thành công!
+        3. Chọn biến tiếp theo dùng Heuristic MRV (hoặc arbitrary nếu cấu hình).
+        4. Chọn thứ tự giá trị để thử dùng Heuristic LCV.
+        5. Với mỗi giá trị: Gán, kiểm tra tính hợp lệ, tỉa miền giá trị (Forward Checking).
         """
+        if self.timeout is not None and (time.time() - self.start_time) > self.timeout:
+            return False
+
         # Điều kiện dừng: Nếu đã gán hết tất cả các ô
         if all(cell.is_assigned for cell in csp.variables.values()):
             return csp.is_solved()
 
         # Chọn ô trắng tiếp theo bằng MRV (kết hợp Degree tie-breaker)
-        var = CSPHeuristics.select_unassigned_variable(csp, use_mrv=self.use_mrv, use_degree=True)
+        var = CSPHeuristics.select_unassigned_variable(
+            csp, 
+            use_mrv=self.use_mrv, 
+            use_degree=True, 
+            arbitrary=self.arbitrary_var
+        )
         if var is None:
             return False
 

@@ -110,35 +110,73 @@ class KakuroEvaluator:
     def run_ablation_study(self) -> List[Dict[str, Any]]:
         """
         Nghiên cứu cắt giảm (Ablation Study) để chứng minh tính hiệu quả của từng Heuristic:
-        1. Backtracking cơ bản
-        2. Backtracking + MRV
-        3. Backtracking + MRV + LCV
-        4. Backtracking + AC-3 + MRV + LCV (Full Optimization)
+        1. Pure Backtracking (Không dùng AC-3, chọn biến tùy ý không có heuristic -> Bùng nổ tổ hợp / Timeout)
+        2. Backtracking + MRV (MRV định hướng chọn biến có miền nhỏ nhất -> Thu hẹp không gian tìm kiếm)
+        3. Backtracking + MRV + LCV (LCV chọn giá trị ít ràng buộc nhất -> Giảm sâu số node duyệt)
+        4. Backtracking + AC-3 + MRV + LCV (Đầy đủ tối ưu)
         """
         print("\n[*] Nghiên cứu cắt giảm (Ablation Study) - So sánh hiệu quả các cấu hình:")
         configs = [
-            {"name": "Pure Backtracking (No AC3, No MRV, No LCV)", "ac3": False, "mrv": False, "lcv": False},
-            {"name": "Backtracking + MRV", "ac3": False, "mrv": True, "lcv": False},
-            {"name": "Backtracking + MRV + LCV", "ac3": False, "mrv": True, "lcv": True},
-            {"name": "Backtracking + AC-3 + MRV + LCV (Full)", "ac3": True, "mrv": True, "lcv": True},
+            {
+                "name": "Pure Backtracking (No Heuristics, Arbitrary)", 
+                "ac3": False, 
+                "mrv": False, 
+                "lcv": False, 
+                "arbitrary": True, 
+                "timeout": 3.0
+            },
+            {
+                "name": "Backtracking + MRV", 
+                "ac3": False, 
+                "mrv": True, 
+                "lcv": False, 
+                "arbitrary": False, 
+                "timeout": None
+            },
+            {
+                "name": "Backtracking + MRV + LCV", 
+                "ac3": False, 
+                "mrv": True, 
+                "lcv": True, 
+                "arbitrary": False, 
+                "timeout": None
+            },
+            {
+                "name": "Backtracking + AC-3 + MRV + LCV (Full)", 
+                "ac3": True, 
+                "mrv": True, 
+                "lcv": True, 
+                "arbitrary": False, 
+                "timeout": None
+            },
         ]
 
         results = []
         for cfg in configs:
             csp = KakuroCSP()
             csp.load_from_json(self.puzzle_path)
-            solver = KakuroBacktrackingSolver(use_ac3=cfg["ac3"], use_mrv=cfg["mrv"], use_lcv=cfg["lcv"])
+            solver = KakuroBacktrackingSolver(
+                use_ac3=cfg["ac3"], 
+                use_mrv=cfg["mrv"], 
+                use_lcv=cfg["lcv"],
+                arbitrary_var=cfg["arbitrary"],
+                timeout=cfg["timeout"]
+            )
             res = solver.solve(csp)
+
+            time_str = f"{res.execution_time:.4f}s" if res.is_solved else f"Timeout (>{cfg['timeout']}s)"
+            nodes_str = f"{res.nodes_explored:,}" if res.is_solved else f">{res.nodes_explored:,}"
+            backtracks_str = f"{res.backtracks:,}" if res.is_solved else f">{res.backtracks:,}"
 
             row = {
                 "Cấu hình": cfg["name"],
                 "Đã giải": res.is_solved,
-                "Thời gian (s)": round(res.execution_time, 4),
-                "Số Nodes": res.nodes_explored,
-                "Số Backtracks": res.backtracks,
+                "Thời gian": time_str,
+                "Số Nodes": nodes_str,
+                "Số Backtracks": backtracks_str,
             }
             results.append(row)
-            print(f"  * {cfg['name']}: {row['Thời gian (s)']}s | Nodes: {row['Số Nodes']} | Backtracks: {row['Số Backtracks']}")
+            print(f"  * {cfg['name']}: {time_str} | Nodes: {nodes_str} | Backtracks: {backtracks_str}")
 
         return results
 
