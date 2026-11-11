@@ -9,6 +9,7 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{multirow}
+\usepackage{tabularx}
 \usepackage{url}
 \usepackage{microtype}
 
@@ -229,7 +230,7 @@ Alpha-Beta pruning reduces explored nodes by 65.9\% at $d=3$ ($258 \to 88$ nodes
 In a 12-match round-robin tournament, Heuristic Alpha-Beta defeated naive Minimax in 23 cycles and standard Alpha-Beta in only 6 cycles, verifying dominant tactical superiority.
 
 \subsection{Dynamic Plugin Loader for External Agents}
-To satisfy Requirement 3, we implement `AgentLoader` utilizing Python's `importlib.util` and `inspect`. Any external agent module inheriting from `BaseAgent` located in `agents/external/` is discovered and loaded dynamically via CLI (`--load_external`), enabling seamless competition against algorithms built by other student groups.
+To satisfy Requirement 3, we implement \texttt{AgentLoader} utilizing Python's \texttt{importlib.util} and \texttt{inspect}. Any external agent module inheriting from \texttt{BaseAgent} located in \texttt{agents/external/} is discovered and loaded dynamically via CLI (\texttt{--load\_external}), enabling seamless competition against algorithms built by other student groups.
 
 \section{Task 3: Constraint Satisfaction Problems (Kakuro)}
 
@@ -298,21 +299,20 @@ Both team members contributed actively across all phases. Detailed individual ta
 \caption{Individual Member Contributions}
 \label{tab:contributions}
 \centering
-\resizebox{\columnwidth}{!}{%
-\begin{tabular}{llc}
+\small
+\begin{tabularx}{\columnwidth}{p{2.4cm} X c}
 \toprule
 \textbf{Member} & \textbf{Assigned Tasks \& Responsibilities} & \textbf{Rate} \\
 \midrule
-\multirow{2}{*}{\textbf{Nguyen Huu Tan (524H0028)}} 
-    & • Task 3: Kakuro CSP modeling, AC-3, MRV/LCV solver, and PyGame UI & 100\% \\
-    & • Task 4: IEEE report drafting, benchmark figures, and demo video & 100\% \\
+\textbf{Nguyen Huu Tan} \newline (524H0028) 
+    & • Task 3: Kakuro CSP, AC-3, MRV/LCV solver, PyGame UI \newline
+      • Task 4: IEEE report drafting, benchmarks, demo video & 100\% \\
 \midrule
-\multirow{2}{*}{\textbf{Nguyen Duc Hieu (524H0087)}} 
-    & • Task 1: N-Queens CNF formulation, Glucose3, and Min-Conflicts heuristics & 100\% \\
-    & • Task 2: Adversarial search (Minimax, Alpha-Beta), physics, and PyGame UI & 100\% \\
+\textbf{Nguyen Duc Hieu} \newline (524H0087) 
+    & • Task 1: N-Queens CNF, Glucose3, Min-Conflicts \newline
+      • Task 2: Tank battle AI (Alpha-Beta), PyGame UI & 100\% \\
 \bottomrule
-\end{tabular}%
-}
+\end{tabularx}
 \end{table}
 
 \section{Self-Evaluation}
@@ -322,8 +322,8 @@ Based on comprehensive testing against the project specifications, the group sel
 \caption{Self-Evaluation and Score Estimation}
 \label{tab:self_eval}
 \centering
-\resizebox{\columnwidth}{!}{%
-\begin{tabular}{llcc}
+\small
+\begin{tabularx}{\columnwidth}{l X c c}
 \toprule
 \textbf{Task} & \textbf{Requirements Covered} & \textbf{Max} & \textbf{Est.} \\
 \midrule
@@ -334,8 +334,7 @@ Task 4 & IEEE report ($\le$ 5 pages), demo, notebook & 1.0 & 1.0 / 1.0 \\
 \midrule
 \textbf{Total} & \textbf{Complete Project Delivery} & \textbf{10.0} & \textbf{10.0 / 10.0} \\
 \bottomrule
-\end{tabular}%
-}
+\end{tabularx}
 \end{table}
 
 \section{Conclusion}
