@@ -1,8 +1,9 @@
 PROJECT DEMO VIDEO
 ================================================================================
 Course: Introduction to Artificial Intelligence (503043)
-Project Group ID: <Group_ID>
-Student ID: <Student_ID>
+Students:
+1. Nguyen Huu Tan - Student ID: 524h0028
+2. Nguyen Duc Hieu - Student ID: 524h0087
 
 Demo Video URL:
 https://youtu.be/example_link_to_demo_video
