@@ -151,6 +151,7 @@ class NQueensProblem:
                     self.n - 1 - r + 0.5,
                     "♛",
                     fontsize=font_size,
+                    fontfamily="DejaVu Sans",
                     ha="center",
                     va="center",
                     color=queen_color,

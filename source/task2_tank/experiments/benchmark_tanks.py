@@ -28,7 +28,7 @@ source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if source_dir not in sys.path:
     sys.path.insert(0, source_dir)
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.maps import MapBuilder
