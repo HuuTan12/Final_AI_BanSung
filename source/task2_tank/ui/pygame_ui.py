@@ -7,7 +7,7 @@ Description:
     1. Smooth tank movement & cell-by-cell bullet flight animations (3 cells/cycle rule).
     2. Start-on-demand workflow: Match waits in READY state until the user clicks START.
     3. Clean, easy-to-read Technical Parameters & Telemetry HUD without visual clutter.
-    4. Optimized 2-Human PvP mode with separate keyboard zones (P0: WASD+F/SPACE, P1: Arrows+ENTER)
+    4. Optimized 2-Human PvP mode with separate keyboard zones (P0: WASD+F/SPACE, P1: Arrows+[/] fire, [.] stay)
        and independent input queues so simultaneous keypresses are never lost or cross-triggered.
     5. Interactive On-Screen Control Pad and dynamic algorithm/depth switcher.
 """
@@ -394,12 +394,14 @@ class TankGameGUI:
         """
         Routes keyboard actions cleanly for 1-Human vs AI or 2-Human PvP:
         - In 2-Human PvP (p0_is_human and p1_is_human):
-          * Player 0 (Blue) uses Left Keyboard: W/A/S/D to move, SPACE/F to Fire, Q/E to Stay.
-          * Player 1 (Red) uses Right Keyboard: Arrow Keys to move, ENTER/K/SLASH to Fire, RSHIFT/M to Stay.
+          * Player 0 (Blue) uses Left Keyboard: W/A/S/D to move, SPACE/F to Fire, Q/X to Stay.
+          * Player 1 (Red) uses Right Keyboard: Arrow Keys to move, [/] (or Numpad 0 / Right-Ctrl) to Fire,
+            [.] (or Numpad .) to Stay. These keys sit directly above/next to the arrow cluster on both
+            full-size and laptop keyboards, so the right hand never has to leave the arrows.
           * Each player's input goes into their own queue (human_queues[0] or human_queues[1]) so simultaneous
             inputs never collide or get lost!
         - In 1-Human vs AI:
-          * The human player can use EITHER WASD or Arrow keys, SPACE/F/ENTER to Fire, Q/X to Stay.
+          * The human player can use EITHER WASD or Arrow keys, SPACE/F or [/] to Fire, Q/X or [.] to Stay.
         """
         both_humans = p0_is_human and p1_is_human
 
@@ -415,19 +417,17 @@ class TankGameGUI:
             pygame.K_x: Action.STAY,
         }
 
-        # Player 1 Dedicated Keyset (Right side of keyboard)
+        # Player 1 Dedicated Keyset (Right side of keyboard, clustered around the arrow keys)
         p1_map = {
             pygame.K_UP: Action.MOVE_UP,
             pygame.K_DOWN: Action.MOVE_DOWN,
             pygame.K_LEFT: Action.MOVE_LEFT,
             pygame.K_RIGHT: Action.MOVE_RIGHT,
-            pygame.K_RETURN: Action.FIRE,
-            pygame.K_KP_ENTER: Action.FIRE,
-            pygame.K_k: Action.FIRE,
-            pygame.K_SLASH: Action.FIRE,
-            pygame.K_RSHIFT: Action.STAY,
-            pygame.K_m: Action.STAY,
-            pygame.K_PERIOD: Action.STAY,
+            pygame.K_SLASH: Action.FIRE,       # [/]  - directly above the arrow cluster
+            pygame.K_KP0: Action.FIRE,         # [Numpad 0] - for full-size keyboards
+            pygame.K_RCTRL: Action.FIRE,       # [Right Ctrl] - next to LEFT arrow on laptops
+            pygame.K_PERIOD: Action.STAY,      # [.]  - right next to [/]
+            pygame.K_KP_PERIOD: Action.STAY,   # [Numpad .]
         }
 
         if both_humans:
@@ -1737,10 +1737,10 @@ class TankGameGUI:
                     k_desc = "Move: [W][A][S][D]   |   Fire: [F] or [SPACE]   |   Stay: [Q]"
                 else:
                     k_title = "PLAYER 1 KEYS (RIGHT KEYBOARD):"
-                    k_desc = "Move: [Arrow Keys]   |   Fire: [ENTER] or [K]   |   Stay: [R-SHIFT]"
+                    k_desc = "Move: [Arrow Keys]   |   Fire: [ / ] or [Num 0]   |   Stay: [ . ]"
             else:
                 k_title = f"PLAYER {pid} HUMAN CONTROLS:"
-                k_desc = "Move: [WASD] / [Arrows]  |  Fire: [SPACE] / [ENTER]  |  Stay: [Q]"
+                k_desc = "Move: [WASD] / [Arrows]  |  Fire: [SPACE] / [ / ]  |  Stay: [Q] / [ . ]"
 
             kt_surf = self.font_metric_lbl.render(k_title, True, self.COLOR_GOLD)
             kd_surf = self.font_bold.render(k_desc, True, self.COLOR_TEXT)
@@ -1816,7 +1816,7 @@ class TankGameGUI:
         self.dpad_buttons.append({"action": Action.STAY, "rect": stay_rect})
 
         if both_humans:
-            hint_str = "2-Human PvP: P0 uses [WASD + F/SPACE]  |  P1 uses [Arrows + ENTER]"
+            hint_str = "2-Human PvP: P0 uses [WASD + F/SPACE]  |  P1 uses [Arrows + / .]"
         else:
             hint_str = "Shortcuts: [P] Pause  |  [U] Undo  |  [R] Reset  |  [M] Change Map"
         hint_surf = self.font_small.render(hint_str, True, self.COLOR_TEXT_DIM)

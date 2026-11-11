@@ -135,13 +135,17 @@ python source/task2_tank/main.py --p0 human --load_external source/task2_tank/ag
 | `ESC` | **Exit** | Quit application |
 
 ### B. Human Player Controls
-- **Keyboard:**
-  - `W` / `Up Arrow`: Move Up (`MOVE_UP`)
-  - `S` / `Down Arrow`: Move Down (`MOVE_DOWN`)
-  - `A` / `Left Arrow`: Move Left (`MOVE_LEFT`)
-  - `D` / `Right Arrow`: Move Right (`MOVE_RIGHT`)
-  - `SPACE` / `F`: Fire Cannon (`FIRE`)
-  - `X` / `C`: Stay in Place (`STAY`)
+- **Keyboard (1 Human vs AI):** use either key zone below.
+- **Keyboard (2-Human PvP):** each player has a dedicated zone so simultaneous presses never collide.
+
+| Action | Player 0 (Blue) – Left hand | Player 1 (Red) – Right hand |
+|:---|:---:|:---:|
+| Move Up / Down / Left / Right | `W` / `S` / `A` / `D` | `↑` / `↓` / `←` / `→` |
+| Fire Cannon (`FIRE`) | `F` or `SPACE` | `/` (alt: `Numpad 0`, `Right Ctrl`) |
+| Stay in Place (`STAY`) | `Q` or `X` | `.` (alt: `Numpad .`) |
+
+> Player 1's `/` and `.` keys sit directly above the arrow cluster on both full-size and laptop keyboards, so the right hand never leaves the arrows.
+
 - **Mouse:** Click the interactive on-screen **D-Pad (`▲`, `▼`, `◀`, `▶`, `💥 FIRE`, `⏸ STAY`)** on the HUD!
 
 ### C. Live In-Game Algorithm & Depth Switcher

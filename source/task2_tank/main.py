@@ -84,7 +84,7 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
     print(f"\n=== MATCH READY: {agent0.name} (P0) vs {agent1.name} (P1) | Map: {display_name.upper()} ===")
     print("Click [START] button (or press SPACE/P) in the GUI window to begin the match!")
     print("Controls: P/SPACE = Start/Pause | S = Step +1 | U/Z = Undo -1 | R = Reset | M = Next Map | 1..4 = Speed")
-    print("2-Human PvP Controls: P0 uses [WASD + F/SPACE] | P1 uses [Arrows + ENTER/K] | or click On-Screen D-Pad!")
+    print("2-Human PvP Controls: P0 uses [WASD + F/SPACE fire, Q stay] | P1 uses [Arrows + / fire, . stay] | or click On-Screen D-Pad!")
 
     import time
     state_history = [state.clone()]
