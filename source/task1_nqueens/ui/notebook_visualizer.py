@@ -97,6 +97,7 @@ def visualize_board(
             ax.text(
                 c + 0.5, n - 1 - r + 0.5, "♛",
                 fontsize=240 // n,
+                fontfamily="DejaVu Sans",
                 ha="center", va="center",
                 color=q_color,
                 zorder=6

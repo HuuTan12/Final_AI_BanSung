@@ -84,8 +84,8 @@ class KakuroVisualizer:
         self.current_map_idx = 0
 
         # Main window dimensions
-        self.screen_width = 1260
-        self.screen_height = 760
+        self.screen_width = 1360
+        self.screen_height = 860
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("Kakuro CSP Visualizer - Introduction to AI (TDTU)")
 
@@ -271,17 +271,17 @@ class KakuroVisualizer:
         # Right control panel button layout
         px = 750
         self.btn_maps = [
-            pygame.Rect(px + i * 230, 118, 220, 36)
+            pygame.Rect(px + i * 270, 118, 255, 38)
             for i in range(len(self.available_maps))
         ]
-        self.btn_play = pygame.Rect(px, 305, 220, 38)
-        self.btn_fwd = pygame.Rect(px + 235, 305, 220, 38)
-        self.btn_back = pygame.Rect(px, 355, 220, 38)
-        self.btn_solve = pygame.Rect(px + 235, 355, 220, 38)
-        self.btn_reset = pygame.Rect(px, 405, 220, 38)
-        self.btn_pencil = pygame.Rect(px + 235, 405, 220, 38)
-        self.btn_slower = pygame.Rect(px, 455, 220, 32)
-        self.btn_faster = pygame.Rect(px + 235, 455, 220, 32)
+        self.btn_play = pygame.Rect(px, 305, 255, 38)
+        self.btn_fwd = pygame.Rect(px + 270, 305, 255, 38)
+        self.btn_back = pygame.Rect(px, 355, 255, 38)
+        self.btn_solve = pygame.Rect(px + 270, 355, 255, 38)
+        self.btn_reset = pygame.Rect(px, 405, 255, 38)
+        self.btn_pencil = pygame.Rect(px + 270, 405, 255, 38)
+        self.btn_slower = pygame.Rect(px, 455, 255, 32)
+        self.btn_faster = pygame.Rect(px + 270, 455, 255, 32)
 
     def run(self):
         """Main GUI loop."""
@@ -499,7 +499,7 @@ class KakuroVisualizer:
         """Draws the right-hand control dashboard in pure English to avoid font encoding issues."""
         px = 730
         py = 20
-        pw = 500
+        pw = 590
         ph = self.screen_height - 40
 
         panel_rect = pygame.Rect(px, py, pw, ph)
@@ -567,10 +567,10 @@ class KakuroVisualizer:
         self.screen.blit(self.font_heading.render("VISUAL LEGEND:", True, (226, 232, 240)), (px + 20, ly))
 
         legends = [
-            (COLOR_ASSIGN, "Try Assignment (MRV + LCV)"),
+            (COLOR_ASSIGN, "Assign Try (MRV + LCV)"),
             (COLOR_PRUNE, "Domain Pruning (Forward Check)"),
-            (COLOR_BACKTRACK, "Dead-End / Backtrack"),
-            (COLOR_SOLVED, "Verified Solution Cell"),
+            (COLOR_BACKTRACK, "Dead End (Backtrack)"),
+            (COLOR_SOLVED, "Final Solution Assigned"),
             (CLUE_H_COLOR, "Horizontal Clue (Gold)"),
             (CLUE_V_COLOR, "Vertical Clue (Cyan)")
         ]
@@ -578,7 +578,7 @@ class KakuroVisualizer:
         for i, (col, text) in enumerate(legends):
             row = i // 2
             col_idx = i % 2
-            bx = px + 20 + col_idx * 240
+            bx = px + 20 + col_idx * 285
             by = ly + 28 + row * 28
             box = pygame.Rect(bx, by, 18, 18)
             pygame.draw.rect(self.screen, col, box, border_radius=4)

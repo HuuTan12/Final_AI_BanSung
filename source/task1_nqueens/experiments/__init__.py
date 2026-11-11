@@ -7,6 +7,9 @@ Description:
     and Min-Conflicts variants across increasing board sizes N >= 4.
 """
 
-from task1_nqueens.experiments.benchmark import BenchmarkRunner
+try:
+    from task1_nqueens.experiments.benchmark import BenchmarkRunner
+except ImportError:
+    from experiments.benchmark import BenchmarkRunner
 
 __all__ = ["BenchmarkRunner"]
