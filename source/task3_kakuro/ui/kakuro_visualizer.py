@@ -72,9 +72,9 @@ class KakuroVisualizer:
         ]
         self.current_map_idx = 0
 
-        # Cửa sổ hiển thị rộng rãi, không bị tràn
-        self.screen_width = 1260
-        self.screen_height = 760
+        # Cửa sổ hiển thị rộng rãi, không bị tràn (1360 x 780)
+        self.screen_width = 1360
+        self.screen_height = 780
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("Kakuro CSP Visualizer - Introduction to AI (TDTU)")
 
@@ -116,7 +116,7 @@ class KakuroVisualizer:
         self.grid_domains: Dict[Tuple[int, int], Set[int]] = {pos: set(range(1, 10)) for pos in self.csp.variables}
         self.last_active_pos: Optional[Tuple[int, int]] = None
         self.last_event_type: Optional[EventType] = None
-        self.status_message = f"Đã nạp {filename}: {len(self.csp.variables)} ô trắng, {len(self.events)} sự kiện."
+        self.status_message = f"Loaded {filename}: {len(self.csp.variables)} white cells, {len(self.events)} events."
 
         # Tính toán kích thước ô cờ (Cell Size) tự co giãn
         max_board_w = 680
@@ -136,17 +136,17 @@ class KakuroVisualizer:
         # Cấu hình vị trí các nút bấm (Panel bên phải rộng rãi)
         px = 750
         self.btn_maps = [
-            pygame.Rect(px + i * 230, 118, 220, 36)
+            pygame.Rect(px + i * 270, 118, 255, 38)
             for i in range(len(self.available_maps))
         ]
-        self.btn_play = pygame.Rect(px, 305, 220, 38)
-        self.btn_fwd = pygame.Rect(px + 235, 305, 220, 38)
-        self.btn_back = pygame.Rect(px, 355, 220, 38)
-        self.btn_solve = pygame.Rect(px + 235, 355, 220, 38)
-        self.btn_reset = pygame.Rect(px, 405, 220, 38)
-        self.btn_pencil = pygame.Rect(px + 235, 405, 220, 38)
-        self.btn_slower = pygame.Rect(px, 455, 220, 32)
-        self.btn_faster = pygame.Rect(px + 235, 455, 220, 32)
+        self.btn_play = pygame.Rect(px, 305, 255, 38)
+        self.btn_fwd = pygame.Rect(px + 270, 305, 255, 38)
+        self.btn_back = pygame.Rect(px, 355, 255, 38)
+        self.btn_solve = pygame.Rect(px + 270, 355, 255, 38)
+        self.btn_reset = pygame.Rect(px, 405, 255, 38)
+        self.btn_pencil = pygame.Rect(px + 270, 405, 255, 38)
+        self.btn_slower = pygame.Rect(px, 455, 255, 32)
+        self.btn_faster = pygame.Rect(px + 270, 455, 255, 32)
 
     def run(self):
         """Vòng lặp giao diện chính."""
@@ -185,7 +185,7 @@ class KakuroVisualizer:
                     self.last_step_time = current_time
                 else:
                     self.is_playing = False
-                    self.status_message = "Đã hoàn thành! Bàn cờ đã giải xong hoàn toàn."
+                    self.status_message = "Completed! Kakuro puzzle solved successfully."
 
             # 3. Vẽ toàn bộ khung cảnh
             self.screen.fill(BG_COLOR)
@@ -266,7 +266,7 @@ class KakuroVisualizer:
             self.grid_values = dict(self.solve_result.solution_grid)
             self.current_event_idx = len(self.events)
             self.last_active_pos = None
-            self.status_message = f"Đã giải thành công trong {self.solve_result.execution_time:.4f}s!"
+            self.status_message = f"Solved successfully in {self.solve_result.execution_time:.4f}s!"
 
     def reset_playback(self):
         """Đặt lại bàn cờ về trạng thái bắt đầu."""
@@ -275,7 +275,7 @@ class KakuroVisualizer:
         self.grid_domains = {pos: set(range(1, 10)) for pos in self.csp.variables}
         self.last_active_pos = None
         self.last_event_type = None
-        self.status_message = "Đã đặt lại trạng thái ban đầu."
+        self.status_message = "Reset to initial state."
 
     def draw_board(self):
         """Vẽ lưới cờ Kakuro với bóng đổ và thiết kế hiện đại."""
@@ -359,7 +359,7 @@ class KakuroVisualizer:
         """Vẽ Dashboard điều khiển bên phải rộng rãi, rõ nét."""
         px = 730
         py = 20
-        pw = 500
+        pw = 590
         ph = self.screen_height - 40
 
         panel_rect = pygame.Rect(px, py, pw, ph)
@@ -371,7 +371,7 @@ class KakuroVisualizer:
         self.screen.blit(self.font_body.render("Interactive Backtracking & AC-3 Visualizer", True, TEXT_MUTED), (px + 20, py + 42))
 
         # --- PHẦN 1: BỘ CHỌN MAP (PUZZLE SELECTOR) ---
-        lbl_map = self.font_heading.render("CHỌN BÀN CỜ (SELECT PUZZLE):", True, (226, 232, 240))
+        lbl_map = self.font_heading.render("SELECT PUZZLE:", True, (226, 232, 240))
         self.screen.blit(lbl_map, (px + 20, py + 74))
 
         mouse_pos = pygame.mouse.get_pos()
@@ -391,7 +391,7 @@ class KakuroVisualizer:
 
         ev_total = max(1, len(self.events))
         pct = (self.current_event_idx / ev_total) * 100
-        step_txt = f"Bước thực thi: {self.current_event_idx:,} / {len(self.events):,} ({pct:.1f}%)"
+        step_txt = f"Execution Step: {self.current_event_idx:,} / {len(self.events):,} ({pct:.1f}%)"
         self.screen.blit(self.font_btn.render(step_txt, True, TEXT_MAIN), (px + 32, py + 180))
 
         # Thanh tiến trình (Progress Bar)
@@ -403,42 +403,42 @@ class KakuroVisualizer:
 
         # Trạng thái diễn giải
         msg = self.status_message
-        if len(msg) > 52:
-            msg = msg[:49] + "..."
-        self.screen.blit(self.font_status.render(f"Trạng thái: {msg}", True, (203, 213, 225)), (px + 32, py + 228))
+        if len(msg) > 65:
+            msg = msg[:62] + "..."
+        self.screen.blit(self.font_status.render(f"Status: {msg}", True, (203, 213, 225)), (px + 32, py + 228))
 
         stat_info = f"Nodes: {self.solve_result.nodes_explored:,}  |  Backtracks: {self.solve_result.backtracks:,}  |  Time: {self.solve_result.execution_time:.3f}s"
         self.screen.blit(self.font_status.render(stat_info, True, TEXT_MUTED), (px + 32, py + 252))
 
         # --- PHẦN 3: NÚT BẤM ĐIỀU KHIỂN (CONTROLS) ---
-        self._draw_btn(self.btn_play, "TẠM DỪNG (PAUSE)" if self.is_playing else "PHÁT (PLAY)", BTN_PRIMARY, mouse_pos)
-        self._draw_btn(self.btn_fwd, "BƯỚC TIẾP (STEP >)", BTN_SECONDARY, mouse_pos)
-        self._draw_btn(self.btn_back, "< BƯỚC TRƯỚC", BTN_SECONDARY, mouse_pos)
-        self._draw_btn(self.btn_solve, "GIẢI NGAY (SOLVE)", (16, 185, 129), mouse_pos)
-        self._draw_btn(self.btn_reset, "ĐẶT LẠI (RESET)", (239, 68, 68), mouse_pos)
-        self._draw_btn(self.btn_pencil, f"BÚT CHÌ: {'BẬT' if self.show_pencil else 'TẮT'}", BTN_SECONDARY, mouse_pos)
+        self._draw_btn(self.btn_play, "PAUSE" if self.is_playing else "PLAY", BTN_PRIMARY, mouse_pos)
+        self._draw_btn(self.btn_fwd, "STEP FORWARD >", BTN_SECONDARY, mouse_pos)
+        self._draw_btn(self.btn_back, "< STEP BACK", BTN_SECONDARY, mouse_pos)
+        self._draw_btn(self.btn_solve, "SOLVE INSTANT", (16, 185, 129), mouse_pos)
+        self._draw_btn(self.btn_reset, "RESET", (239, 68, 68), mouse_pos)
+        self._draw_btn(self.btn_pencil, f"PENCIL MARKS: {'ON' if self.show_pencil else 'OFF'}", BTN_SECONDARY, mouse_pos)
 
         # Tùy chỉnh tốc độ (Speed)
-        self._draw_btn(self.btn_slower, "TỐC ĐỘ: CHẬM HƠN", (40, 50, 68), mouse_pos)
-        self._draw_btn(self.btn_faster, "TỐC ĐỘ: NHANH HƠN", (40, 50, 68), mouse_pos)
+        self._draw_btn(self.btn_slower, "SPEED: SLOWER", (40, 50, 68), mouse_pos)
+        self._draw_btn(self.btn_faster, "SPEED: FASTER", (40, 50, 68), mouse_pos)
 
         # --- PHẦN 4: CHÚ THÍCH MÀU SẮC (LEGEND) ---
         ly = py + 505
-        self.screen.blit(self.font_heading.render("CHÚ THÍCH TRỰC QUAN:", True, (226, 232, 240)), (px + 20, ly))
+        self.screen.blit(self.font_heading.render("VISUAL LEGEND:", True, (226, 232, 240)), (px + 20, ly))
 
         legends = [
-            (COLOR_ASSIGN, "Gán thử giá trị (MRV + LCV)"),
-            (COLOR_PRUNE, "Tỉa miền giá trị (Forward Checking)"),
-            (COLOR_BACKTRACK, "Nhánh cụt - Quay lui (Backtrack)"),
-            (COLOR_SOLVED, "Ô đã chốt nghiệm hợp lệ"),
-            (CLUE_H_COLOR, "Clue Ngang (Màu vàng gold)"),
-            (CLUE_V_COLOR, "Clue Dọc (Màu xanh cyan)")
+            (COLOR_ASSIGN, "Assign Try (MRV + LCV)"),
+            (COLOR_PRUNE, "Domain Pruning (Forward Check)"),
+            (COLOR_BACKTRACK, "Dead End (Backtrack)"),
+            (COLOR_SOLVED, "Final Solution Assigned"),
+            (CLUE_H_COLOR, "Horizontal Clue (Gold)"),
+            (CLUE_V_COLOR, "Vertical Clue (Cyan)")
         ]
 
         for i, (col, text) in enumerate(legends):
             row = i // 2
             col_idx = i % 2
-            bx = px + 20 + col_idx * 240
+            bx = px + 20 + col_idx * 285
             by = ly + 28 + row * 28
             box = pygame.Rect(bx, by, 18, 18)
             pygame.draw.rect(self.screen, col, box, border_radius=4)
