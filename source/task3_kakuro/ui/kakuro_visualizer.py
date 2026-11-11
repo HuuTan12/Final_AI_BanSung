@@ -84,8 +84,8 @@ class KakuroVisualizer:
         self.current_map_idx = 0
 
         # Main window dimensions
-        self.screen_width = 1260
-        self.screen_height = 760
+        self.screen_width = 1360
+        self.screen_height = 860
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption("Kakuro CSP Visualizer - Introduction to AI (TDTU)")
 
