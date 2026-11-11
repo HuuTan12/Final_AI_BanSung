@@ -44,7 +44,7 @@
 \maketitle
 
 \begin{abstract}
-This paper presents the design, implementation, and empirical evaluation of three classical Artificial Intelligence paradigms: (i) Propositional Logic SAT reduction and Local Search for the $N$-Queens problem, (ii) Zero-Sum Adversarial Search algorithms in a discrete turn-based Tank Battle game, and (iii) Constraint Satisfaction Problems (CSP) applied to Japanese Kakuro logic puzzles. The $N$-Queens formulation rigorously encodes board constraints into Conjunctive Normal Form (CNF) clauses solved by PySAT Glucose3 ($O(N^3)$ clause scalability) and proposes a Tabu-enhanced Min-Conflicts heuristic that reduces search steps by over 93\%. The Tank Battle simulation formulates a zero-sum game with fine-grained cell-by-cell bullet physics, comparing Minimax, Alpha-Beta pruning, and heuristic evaluations across head-to-head tournaments. Finally, the Kakuro CSP solver combines AC-3 Arc Consistency, Forward Checking, Minimum Remaining Values (MRV), and Least Constraining Value (LCV) to solve complex $9 \times 9$ puzzles in under 0.15 seconds with 100\% stability and verification.
+In this final project for the Introduction to Artificial Intelligence course, our student group implements and evaluates three core topics: (1) Propositional Logic and Local Search for the $N$-Queens problem, (2) Adversarial Search for a turn-based Tank Battle game, and (3) Constraint Satisfaction Problems (CSP) for solving Kakuro puzzles. For Task 1, we convert chessboard constraints into Conjunctive Normal Form (CNF) clauses and solve them using the PySAT Glucose3 solver, while also comparing the standard Min-Conflicts local search with our proposed heuristic. For Task 2, we model the Tank Battle game as a two-player zero-sum game with cell-by-cell bullet physics, comparing Minimax, Alpha-Beta pruning, and heuristic evaluations. For Task 3, we formulate Kakuro as a CSP and apply Backtracking with AC-3, MRV, and LCV heuristics to solve both sample and complex puzzles. All algorithms are tested, visualized via PyGame, and fully meet the project requirements.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -52,14 +52,14 @@ Propositional Logic, SAT Solver, Glucose3, Min-Conflicts, Adversarial Search, Al
 \end{IEEEkeywords}
 
 \section{Introduction}
-Classical Artificial Intelligence (AI) provides rigorous frameworks for modeling complex combinatorial problems, competitive games, and structured constraints without requiring massive training datasets. This project comprehensively addresses three foundational AI domains:
+This report presents our group's work for the final project in the Introduction to Artificial Intelligence course (503043) at Ton Duc Thang University. The goal of the project is to apply foundational search and logic techniques to solve three practical problems:
 \begin{enumerate}
-    \item \textbf{Propositional Logic \& Local Search}: Formulating $N$-Queens into Conjunctive Normal Form (CNF) clauses for the modern CDCL solver Glucose3, complemented by an improved variable selection heuristic for the Min-Conflicts local search algorithm.
-    \item \textbf{Adversarial Search}: Developing a turn-based, two-player Zero-Sum Tank Battle simulator governed by discrete bullet physics, comparing four search configurations (Minimax, Alpha-Beta, Heuristic Minimax, Heuristic Alpha-Beta), and providing a dynamic agent plugin architecture.
-    \item \textbf{Constraint Satisfaction Problems}: Modeling Kakuro arithmetic puzzles as a CSP with pre-computed combination tables, evaluated across Correctness, Stability, and Effectiveness on a complex $9 \times 9$ grid, backed by an interactive PyGame visualizer.
+    \item \textbf{Task 1 (N-Queens)}: We formulate the $N$-Queens problem using propositional logic, generate CNF clauses, and solve them with the Glucose3 SAT solver. We also implement the Min-Conflicts algorithm and propose a new variable selection heuristic to improve search efficiency.
+    \item \textbf{Task 2 (Tank Battle)}: We build a turn-based 2D tank battle game as a zero-sum game. We implement four search configurations (Minimax, Alpha-Beta, Heuristic Minimax, and Heuristic Alpha-Beta) and create a plugin system to load external student agents.
+    \item \textbf{Task 3 (Kakuro)}: We model the Kakuro arithmetic puzzle as a Constraint Satisfaction Problem (CSP) and implement a solver combining Backtracking with AC-3 consistency and heuristics (MRV and LCV).
 \end{enumerate}
 
-All modules are designed under strict Object-Oriented Programming (OOP) principles and cross-platform standards (macOS Ventura, Windows, Linux).
+All programs are written in Python following Object-Oriented Programming (OOP) principles, tested on macOS and Windows, and include graphical user interfaces built with PyGame.
 
 \section{Task 1: Local Search \& Propositional Logic (N-Queens)}
 
@@ -334,7 +334,7 @@ Task 4 & IEEE report ($\le$ 5 pages), demo, notebook & 1.0 & 1.0 / 1.0 \\
 \end{table}
 
 \section{Conclusion}
-This project successfully designed and benchmarked three core AI problem-solving paradigms. Glucose3 proved that SAT reductions scale remarkably well ($O(N^3)$ clauses) for NP-complete problems, while Tabu-enhanced Min-Conflicts demonstrated over 93\% step reductions in local search. In adversarial environments, Alpha-Beta pruning compressed game trees by 66\%, empowering real-time decision-making in competitive tank combat. Finally, integrating AC-3 consistency and MRV/LCV heuristics resolved complex $9 \times 9$ Kakuro puzzles deterministically in milliseconds. All source code, notebooks, and benchmarks are preserved in the repository.
+Through this project, our group has gained hands-on experience in implementing classical AI algorithms. In Task 1, converting $N$-Queens to CNF showed that modern SAT solvers like Glucose3 can solve logic problems very quickly, and our proposed heuristic significantly reduced the number of search steps in Min-Conflicts. In Task 2, Alpha-Beta pruning proved effective in reducing explored game states while maintaining real-time responsiveness in the Tank Battle game. In Task 3, combining AC-3 propagation with MRV and LCV heuristics allowed our solver to handle complex $9 \times 9$ Kakuro puzzles reliably in under 0.15 seconds. All tasks have been completed, verified with benchmarks, and documented according to the course guidelines.
 
 \begin{thebibliography}{00}
 \bibitem{russell2020} S. Russell and P. Norvig, \textit{Artificial Intelligence: A Modern Approach}, 4th ed. Pearson, 2020.
