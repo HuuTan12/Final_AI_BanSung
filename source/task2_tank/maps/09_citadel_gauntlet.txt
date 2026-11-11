@@ -1,0 +1,13 @@
+#1S.W#Y#W.S.#
+.##W.###.W##.
+.#B.S...S.B#.
+.W.#B###B#.W.
+S..W.S#S.W..S
+.#WB.BWB.BW#.
+B.S##BSB##S.B
+.#WB.BWB.BW#.
+S..W.S#S.W..S
+.W.#B###B#.W.
+.#B.S...S.B#.
+.##W.###.W##.
+#.S.W#X#W.S0#

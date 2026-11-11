@@ -74,17 +74,18 @@ class Base(GameEntity):
 class Wall(GameEntity):
     """
     Destructible wall / obstacle.
-    - Initial HP = 3 (as required by the problem spec)
+    - Default Initial HP = 3 (Metal wall = 3 HP, Wooden crate = 2 HP, Sandbag = 1 HP)
     - When HP reaches 0 the wall disappears, clearing the cell
     """
     INITIAL_HP = 3
 
-    def __init__(self, x: int, y: int):
-        super().__init__(x, y, self.INITIAL_HP)
+    def __init__(self, x: int, y: int, hp: int = INITIAL_HP):
+        super().__init__(x, y, hp)
+        self.max_hp = hp
 
     def clone(self) -> "Wall":
-        copy = Wall(self.x, self.y)
-        copy.hp = self.hp
+        copy = Wall(self.x, self.y, self.hp)
+        copy.max_hp = self.max_hp
         return copy
 
 

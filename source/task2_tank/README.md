@@ -45,7 +45,7 @@ Faculty of Information Technology, Ton Duc Thang University (TDTU).
 
 ```text
 source/task2_tank/
-├── maps/                            # 8 Tactical ASCII Map Scenarios (.txt)
+├── maps/                            # 9 Tactical ASCII Map Scenarios (.txt)
 │   ├── 01_classic_battlecity.txt    # Standard Battle City layout
 │   ├── 02_open_duel.txt             # Open terrain, minimal cover
 │   ├── 03_tactical_maze.txt         # Winding chokepoints and corridors
@@ -53,7 +53,8 @@ source/task2_tank/
 │   ├── 05_sniper_valley.txt         # Long-range central corridor + ambush flanks
 │   ├── 06_twin_citadels.txt         # Symmetrical twin castles with gated walls
 │   ├── 07_iron_labyrinth.txt        # Complex maze testing non-Euclidean pathfinding
-│   └── 08_crossfire_arena.txt       # Esports tournament arena with diamond bunker
+│   ├── 08_crossfire_arena.txt       # Esports tournament arena with diamond bunker
+│   └── 09_citadel_gauntlet.txt      # High-density multi-obstacle stronghold (#=3HP, W=2HP, S=1HP, B=Bush)
 ├── engine/
 │   ├── actions.py                   # 6 Actions (MOVE_*, FIRE, STAY) and Direction enum
 │   ├── entities.py                  # Tank (HP 6), Base (HP 9), Wall (HP 3), Bullet (Speed 3)

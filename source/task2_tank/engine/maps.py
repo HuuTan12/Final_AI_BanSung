@@ -144,6 +144,33 @@ class MapBuilder:
         state.game_cycle = 0
         return state
 
+    @staticmethod
+    def create_citadel_gauntlet_map(width: int = 13, height: int = 13) -> GameState:
+        """
+        Creates a high-complexity, multi-material stronghold map ('09_citadel_gauntlet')
+        featuring heavy Metal Walls (3 HP), Wooden Crates (2 HP), Sandbag Barriers (1 HP),
+        and dense Bush Ambush Canopies (passable).
+        Designed to stress-test pathfinding, multi-HP obstacle breaching, line-of-sight
+        raycasting, 3-cell bullet penetration, and flanking maneuvers.
+        """
+        from task2_tank.engine.map_loader import MapLoader
+        ascii_layout = "\n".join([
+            "#.S.W#Y#W.S.#",
+            ".##W.###.W##.",
+            ".#B.S.1.S.B#.",
+            ".W.#B###B#.W.",
+            "S..W.S#S.W..S",
+            ".#WB.BWB.BW#.",
+            "B.S##BSB##S.B",
+            ".#WB.BWB.BW#.",
+            "S..W.S#S.W..S",
+            ".W.#B###B#.W.",
+            ".#B.S.0.S.B#.",
+            ".##W.###.W##.",
+            "#.S.W#X#W.S.#",
+        ])
+        return MapLoader.load_from_string(ascii_layout, source_name="09_citadel_gauntlet")
+
     @classmethod
     def get_map_by_name(cls, name: str, width: int = 13, height: int = 13) -> GameState:
         """
@@ -159,6 +186,8 @@ class MapBuilder:
             name_lower = name.lower()
             if "open" in name_lower:
                 return cls.create_open_map(width, height)
+            elif "citadel" in name_lower or "gauntlet" in name_lower or "09" in name_lower:
+                return cls.create_citadel_gauntlet_map(width, height)
             elif "choke" in name_lower or "maze" in name_lower or "corridor" in name_lower:
                 return cls.create_chokepoint_map(width, height)
             else:

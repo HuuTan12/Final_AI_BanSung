@@ -203,7 +203,7 @@ class BacktrackingSolver(BaseSolver):
             solutions_found=0,
             backtracks_count=0,
             conflicts=[],
-            message=f"Khởi tạo bàn cờ {n}x{n} trống. Bắt đầu duyệt quay lui..."
+            message=f"Initialized empty {n}x{n} chessboard. Commencing DFS backtracking search..."
         )
 
         def backtrack(col: int) -> Generator[BacktrackStep, None, bool]:
@@ -212,8 +212,8 @@ class BacktrackingSolver(BaseSolver):
             if col == n:
                 solutions_count += 1
                 known_total = KNOWN_SOLUTIONS_COUNT.get(n, "?")
-                msg = (f"🎉 Tìm thấy nghiệm #{solutions_count}! "
-                       f"({solutions_count}/{known_total} trường hợp nghiệm)")
+                msg = (f"Solution #{solutions_count} found! "
+                       f"({solutions_count}/{known_total} configurations solved)")
                 yield BacktrackStep(
                     event_type="SOLUTION",
                     col=col - 1,
@@ -248,7 +248,7 @@ class BacktrackingSolver(BaseSolver):
                             solutions_found=solutions_count,
                             backtracks_count=backtracks_count,
                             conflicts=conflicts,
-                            message=f"Thử ô ({r}, {col}) thất bại: Xung đột với hậu tại {c_info}!"
+                            message=f"Square ({r}, {col}) invalid: Attacked by existing queen at {c_info}!"
                         )
                 else:
                     # Safe to place
@@ -262,7 +262,7 @@ class BacktrackingSolver(BaseSolver):
                         solutions_found=solutions_count,
                         backtracks_count=backtracks_count,
                         conflicts=[],
-                        message=f"Đặt con hậu an toàn tại ({r}, {col})! Tiến tới cột {col + 1}."
+                        message=f"Safely placed Queen at ({r}, {col}). Advancing to Column {col + 1}."
                     )
 
                     # Recurse to next column
@@ -288,7 +288,7 @@ class BacktrackingSolver(BaseSolver):
                         solutions_found=solutions_count,
                         backtracks_count=backtracks_count,
                         conflicts=[],
-                        message=f"Rút hậu khỏi ({r}, {col}). Quay lui để thử trường hợp khác..."
+                        message=f"Backtracking: Removed Queen at ({r}, {col}). Exploring next candidate..."
                     )
 
             return False
@@ -307,5 +307,5 @@ class BacktrackingSolver(BaseSolver):
             solutions_found=solutions_count,
             backtracks_count=backtracks_count,
             conflicts=[],
-            message=f"Hoàn tất tìm kiếm! Đã duyệt {cases_count} trường hợp, tìm thấy {solutions_count}/{known_total} nghiệm."
+            message=f"Search completed! Tested {cases_count} configurations, found {solutions_count}/{known_total} valid solutions."
         )

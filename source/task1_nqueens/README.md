@@ -72,24 +72,24 @@ The project includes an interactive graphical interface (`pygame_nqueens.py`) de
    - **Interactive Manual Sandbox:** Click any square to place, move, or remove queens by hand, with live conflict count and attack lines!
 
 3. **Telemetry & Live Metrics Panel:**
-   - **Trường hợp đã xét / duyệt (Cases Explored):** Real-time dynamic counter of candidate positions tested.
-   - **Số nghiệm hợp lệ (Solutions Found):** Dynamic solution count with reference total (e.g., `92/92`).
-   - **Số xung đột hiện tại (Current Conflicts):** Counts attacking pairs ($0$ = Solved!).
-   - **Số bước & Lần quay lui / khởi động lại (Steps & Backtracks/Restarts).**
-   - **Mô hình Mệnh đề Logic CNF:** Number of variables ($N^2$), ALO/AMO clauses, theoretical formula match check ($2N + N^2(N-1) + \frac{N(N-1)(2N-1)}{3}$).
-   - **Thời gian thực thi (Latency in ms).**
+   - **Cases Tested (Explored Assignments):** Real-time dynamic counter of candidate positions tested.
+   - **Solutions Found:** Dynamic solution count with reference total (e.g., `92/92`).
+   - **Current Conflicts:** Counts attacking pairs ($0$ = Solved!).
+   - **Search Steps & Backtrack / Restart Counters.**
+   - **Propositional Logic CNF Model:** Number of variables ($N^2$), ALO/AMO clauses, theoretical formula match check ($2N + N^2(N-1) + \frac{N(N-1)(2N-1)}{3}$).
+   - **Execution Latency (in ms).**
 
 ### B. Controls & Keyboard Shortcuts
 | Control | Shortcut | Description |
 |:---|:---:|:---|
-| **Play / Pause** | `SPACE` | Tự động chạy / tạm dừng hoạt ảnh đặt hậu từng bước |
-| **Tiến 1 bước (+1)** | `RIGHT` / `S` | Thực thi đúng 1 bước tìm kiếm kế tiếp |
-| **Lùi 1 bước (-1)** | `LEFT` / `A` | Hoàn tác lại bước trước đó (Step History Undo) |
-| **Reset** | `R` | Đặt lại bàn cờ và khởi động lại giải thuật |
-| **Tốc độ (Speed)** | `1` .. `5` | 1x, 2x, 5x, 10x, hoặc ⚡ Max (Tức thì) |
-| **Chọn N** | Click `[-]` / `[+]` | Thay đổi kích thước bàn cờ $N = 4, 6, 8, 10, 12, 16$ |
-| **Duyệt nghiệm** | Click `◀ / ▶` | Xem qua các nghiệm hợp lệ khác nhau |
-| **Đặt hậu bằng tay** | Chuột trái | Click vào ô cờ bất kỳ để đặt/gỡ quân hậu |
+| **Play / Pause** | `SPACE` | Automatically advance / pause step-by-step queen placement animation |
+| **Step Forward (+1)** | `RIGHT` / `S` | Execute exactly one forward search step |
+| **Step Backward (-1)** | `LEFT` / `A` | Rewind one step back in history (Step History Undo) |
+| **Reset** | `R` | Reset chessboard and re-initialize active solver |
+| **Speed Multiplier** | `1` .. `5` | 1x, 2x, 5x, 10x, or ⚡ Max (Instant) |
+| **Select Board Size N** | Click `[-]` / `[+]` | Change chessboard dimension $N = 4, 6, 8, 10, 12, 16$ |
+| **Browse Solutions** | Click `◀ / ▶` | Cycle through distinct valid solution configurations |
+| **Manual Placement** | Left Click | Click any square to place, move, or remove a queen |
 
 ---
 
@@ -102,13 +102,13 @@ python source/task1_nqueens/main.py
 ```
 Or with custom arguments:
 ```bash
-# Chạy bàn cờ 8x8 với thuật toán Backtracking
+# Run 8x8 chessboard with Backtracking algorithm
 python source/task1_nqueens/main.py --n 8 --algo BACKTRACKING --speed 5
 
-# Chạy Min-Conflicts với Heuristic Max-Conflict đề xuất
+# Run Min-Conflicts with proposed Max-Conflict heuristic
 python source/task1_nqueens/main.py --n 8 --algo MIN_CONFLICTS_MAX --speed 2
 
-# Chạy duyệt toàn bộ 92 nghiệm N=8
+# Browse all 92 solutions for N=8
 python source/task1_nqueens/main.py --n 8 --algo BROWSER
 ```
 
