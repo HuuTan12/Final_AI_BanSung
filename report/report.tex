@@ -101,7 +101,7 @@ The CNF formula is formatted into DIMACS and solved using Glucose3 from the PySA
 \caption{Glucose3 SAT Solver Scalability ($N \ge 4$)}
 \label{tab:sat_perf}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{ccccc}
 \toprule
 \textbf{Board $N$} & \textbf{Variables ($N^2$)} & \textbf{CNF Clauses} & \textbf{Time (s)} & \textbf{Status} \\
@@ -113,7 +113,8 @@ The CNF formula is formatted into DIMACS and solved using Glucose3 from the PySA
 20 & 400  & 12,580 & 0.001189 & SAT \\
 32 & 1024 & 53,600 & 0.015240 & SAT \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 Glucose3 demonstrates exceptional efficiency, solving $N=32$ in merely 15 ms due to Conflict-Driven Clause Learning (CDCL), two-watched-literal indexing, and aggressive clause database reduction.
@@ -129,10 +130,10 @@ Standard Min-Conflicts selects a conflicted variable uniformly at random. When m
 \caption{Min-Conflicts Comparison Across Heuristic Variants}
 \label{tab:mc_perf}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{ccccc}
 \toprule
-\textbf{$N$} & \textbf{Variable Selection Strategy} & \textbf{Avg Steps} & \textbf{Avg Time (s)} & \textbf{Success} \\
+\textbf{$N$} & \textbf{Selection Strategy} & \textbf{Avg Steps} & \textbf{Avg Time (s)} & \textbf{Success} \\
 \midrule
 \multirow{3}{*}{8}  & Standard (Random)          & 353.2 & 0.00070 & 100\% \\
                     & Proposed 1 (Max-Conflict)  & 35.0  & 0.00011 & 100\% \\
@@ -146,7 +147,8 @@ Standard Min-Conflicts selects a conflicted variable uniformly at random. When m
                     & Proposed 1 (Max-Conflict)  & 104.0 & 0.00072 & 100\% \\
                     & Proposed 2 (Hybrid-Tabu)   & \textbf{61.4}  & \textbf{0.00046} & \textbf{100\%} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 As shown in Table~\ref{tab:mc_perf}, the Hybrid-Tabu heuristic achieves a dramatic 93.6\% step reduction for $N=8$ ($353.2 \to 22.4$ steps) and a 47\% reduction for $N=32$, confirming that tabu tenure successfully prevents cyclic thrashing.
@@ -191,7 +193,7 @@ We benchmarked the four required search configurations across identical game sce
 \caption{Search Performance Across 4 Tank AI Configurations}
 \label{tab:tank_perf}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{ccccc}
 \toprule
 \textbf{Depth} & \textbf{Algorithm Configuration} & \textbf{Nodes} & \textbf{Prunes} & \textbf{Time (s)} \\
@@ -211,7 +213,8 @@ We benchmarked the four required search configurations across identical game sce
                        & 3. Heuristic Minimax    & 258 & 0  & 0.00597 \\
                        & 4. Heuristic Alpha-Beta & \textbf{88}  & \textbf{11} & \textbf{0.00262} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 Alpha-Beta pruning reduces explored nodes by 65.9\% at $d=3$ ($258 \to 88$ nodes), achieving a $2.3\times$ speedup while preserving identical minimax values.
@@ -271,17 +274,18 @@ The solver was evaluated against three mandatory criteria:
 \caption{Ablation Study on Complex 9x9 Kakuro Puzzle}
 \label{tab:kakuro_ablation}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lccc}
 \toprule
-\textbf{Solver Configuration} & \textbf{Time (s)} & \textbf{Nodes} & \textbf{Backtracks} \\
+\textbf{Configuration} & \textbf{Time (s)} & \textbf{Nodes} & \textbf{Backtracks} \\
 \midrule
 Pure Backtracking (Baseline)   & 0.0138 & 2,409  & 2,409 \\
 Backtracking + MRV             & 0.3055 & 35,075 & 35,027 \\
 Backtracking + MRV + LCV       & 0.1440 & 11,383 & 11,335 \\
 Backtracking + AC-3 + MRV + LCV& \textbf{0.1405} & \textbf{11,383} & \textbf{11,335} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Interactive PyGame Visualizer}
@@ -294,7 +298,7 @@ Both team members contributed actively across all phases. Detailed individual ta
 \caption{Individual Member Contributions}
 \label{tab:contributions}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{llc}
 \toprule
 \textbf{Member} & \textbf{Assigned Tasks \& Responsibilities} & \textbf{Rate} \\
@@ -309,7 +313,8 @@ Both team members contributed actively across all phases. Detailed individual ta
     & • Task 2: Adversarial search \& PyGame UI & 100\% \\
     & • Task 3: Kakuro CSP, AC-3, PyGame UI & 100\% \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \section{Self-Evaluation}
@@ -319,7 +324,7 @@ Based on comprehensive testing against the project specifications, the group sel
 \caption{Self-Evaluation and Score Estimation}
 \label{tab:self_eval}
 \centering
-\small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{llcc}
 \toprule
 \textbf{Task} & \textbf{Requirements Covered} & \textbf{Max} & \textbf{Est.} \\
@@ -331,7 +336,8 @@ Task 4 & IEEE report ($\le$ 5 pages), demo, notebook & 1.0 & 1.0 / 1.0 \\
 \midrule
 \textbf{Total} & \textbf{Complete Project Delivery} & \textbf{10.0} & \textbf{10.0 / 10.0} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \section{Conclusion}
