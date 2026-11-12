@@ -1305,7 +1305,7 @@ class TankGameGUI:
         - Double-beveled bunker frame with 4 metallic corner bastion brackets
         - Mini Golden Command Star shield emblem + 'BASE HQ HEALTH' header
         - Pill-framed HP readout badge
-        - 9-Plate Citadel Armor Bar organized into 3 Bastion Tiers ([### | ### | ###])
+        - 9-Plate Citadel Armor Bar organized into 3 Bastion Tiers ([■■■ | ■■■ | ■■■])
         """
         box_rect = pygame.Rect(x, y, w, h)
         ratio = max(0.0, min(1.0, hp / max(1, max_hp)))
@@ -1353,7 +1353,7 @@ class TankGameGUI:
         pygame.draw.rect(self.screen, bar_col, pill_rect, 1, border_radius=3)
         self.screen.blit(val_surf, (pill_rect.centerx - val_surf.get_width() // 2, pill_rect.y + 1))
 
-        # 5. 9-Plate Citadel Armor Trough (3 Bastion Tiers of 3 HP: [### | ### | ###])
+        # 5. 9-Plate Citadel Armor Trough (3 Bastion Tiers of 3 HP: [■■■ | ■■■ | ■■■])
         trough_x = x + 7
         trough_y = y + h - 15
         trough_w = w - 14

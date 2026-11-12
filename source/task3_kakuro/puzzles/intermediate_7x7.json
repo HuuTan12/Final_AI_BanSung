@@ -1,0 +1,105 @@
+{
+  "name": "Kakuro Intermediate 7x7",
+  "rows": 7,
+  "cols": 7,
+  "horizontal_clues": [
+    {
+      "r": 1,
+      "c": 1,
+      "clue": 11,
+      "length": 3
+    },
+    {
+      "r": 2,
+      "c": 0,
+      "clue": 20,
+      "length": 4
+    },
+    {
+      "r": 3,
+      "c": 0,
+      "clue": 10,
+      "length": 2
+    },
+    {
+      "r": 3,
+      "c": 3,
+      "clue": 11,
+      "length": 3
+    },
+    {
+      "r": 4,
+      "c": 0,
+      "clue": 18,
+      "length": 3
+    },
+    {
+      "r": 4,
+      "c": 4,
+      "clue": 3,
+      "length": 2
+    },
+    {
+      "r": 5,
+      "c": 2,
+      "clue": 20,
+      "length": 4
+    },
+    {
+      "r": 6,
+      "c": 2,
+      "clue": 19,
+      "length": 3
+    }
+  ],
+  "vertical_clues": [
+    {
+      "r": 1,
+      "c": 1,
+      "clue": 11,
+      "length": 3
+    },
+    {
+      "r": 0,
+      "c": 2,
+      "clue": 20,
+      "length": 4
+    },
+    {
+      "r": 0,
+      "c": 3,
+      "clue": 10,
+      "length": 2
+    },
+    {
+      "r": 3,
+      "c": 3,
+      "clue": 11,
+      "length": 3
+    },
+    {
+      "r": 0,
+      "c": 4,
+      "clue": 18,
+      "length": 3
+    },
+    {
+      "r": 4,
+      "c": 4,
+      "clue": 3,
+      "length": 2
+    },
+    {
+      "r": 2,
+      "c": 5,
+      "clue": 20,
+      "length": 4
+    },
+    {
+      "r": 2,
+      "c": 6,
+      "clue": 19,
+      "length": 3
+    }
+  ]
+}
