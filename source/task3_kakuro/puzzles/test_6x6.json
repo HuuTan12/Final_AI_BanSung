@@ -1,0 +1,22 @@
+{
+  "name": "Kakuro Intermediate 6x6",
+  "rows": 6,
+  "cols": 6,
+  "horizontal_clues": [
+    { "r": 1, "c": 0, "clue": 8, "length": 2 },
+    { "r": 1, "c": 3, "clue": 15, "length": 2 },
+    { "r": 2, "c": 0, "clue": 10, "length": 2 },
+    { "r": 2, "c": 3, "clue": 13, "length": 2 },
+    { "r": 3, "c": 0, "clue": 27, "length": 5 },
+    { "r": 4, "c": 0, "clue": 23, "length": 5 },
+    { "r": 5, "c": 0, "clue": 13, "length": 2 },
+    { "r": 5, "c": 3, "clue": 9, "length": 2 }
+  ],
+  "vertical_clues": [
+    { "r": 0, "c": 1, "clue": 29, "length": 5 },
+    { "r": 0, "c": 2, "clue": 27, "length": 5 },
+    { "r": 2, "c": 3, "clue": 10, "length": 2 },
+    { "r": 0, "c": 4, "clue": 32, "length": 5 },
+    { "r": 0, "c": 5, "clue": 20, "length": 5 }
+  ]
+}
