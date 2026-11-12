@@ -21,22 +21,22 @@
 ## 2. Cấu trúc thư mục Task 3
 ```
 task3_kakuro/
-├── csp/
-│   ├── variable.py          # Biến Cell (ô trắng, tọa độ, miền giá trị {1..9})
-│   ├── constraint.py        # Ràng buộc Run (Sum & AllDifferent, pre-computed combinations)
-│   └── csp_problem.py       # Quản lý mạng ràng buộc KakuroCSP, kiểm tra cân bằng clue
-├── solver/
-│   ├── propagators.py       # AC-3 và Forward Checking thu hẹp miền giá trị
-│   ├── heuristics.py        # MRV (Minimum Remaining Values), Degree, LCV (Least Constraining Value)
-│   ├── tracer.py            # Observer pattern ghi lại các sự kiện (Assign, Prune, Backtrack) cho UI
-│   └── backtracking_solver.py # Thuật toán Backtracking tích hợp AC-3 và Heuristics
-├── puzzles/
-│   ├── sample_5x5.json      # Bảng 5x5 mẫu từ trang 4 của đề
-│   └── complex_9x9.json     # Bảng 9x9 test case phức tạp từ trang 5 của đề
-├── ui/
-│   └── kakuro_visualizer.py # Giao diện trực quan hóa (Domains, Propagation, Backtracking)
-├── experiments/
-│   └── evaluate_kakuro.py   # Kịch bản kiểm thử Correctness, Stability và Effectiveness
-├── kakuro.ipynb             # Notebook giữ output cells theo quy định nộp bài
-└── README.md
+|---- csp/
+|   |---- variable.py          # Biến Cell (ô trắng, tọa độ, miền giá trị {1..9})
+|   |---- constraint.py        # Ràng buộc Run (Sum & AllDifferent, pre-computed combinations)
+|   ---- csp_problem.py       # Quản lý mạng ràng buộc KakuroCSP, kiểm tra cân bằng clue
+|---- solver/
+|   |---- propagators.py       # AC-3 và Forward Checking thu hẹp miền giá trị
+|   |---- heuristics.py        # MRV (Minimum Remaining Values), Degree, LCV (Least Constraining Value)
+|   |---- tracer.py            # Observer pattern ghi lại các sự kiện (Assign, Prune, Backtrack) cho UI
+|   ---- backtracking_solver.py # Thuật toán Backtracking tích hợp AC-3 và Heuristics
+|---- puzzles/
+|   |---- sample_5x5.json      # Bảng 5x5 mẫu từ trang 4 của đề
+|   ---- complex_9x9.json     # Bảng 9x9 test case phức tạp từ trang 5 của đề
+|---- ui/
+|   ---- kakuro_visualizer.py # Giao diện trực quan hóa (Domains, Propagation, Backtracking)
+|---- experiments/
+|   ---- evaluate_kakuro.py   # Kịch bản kiểm thử Correctness, Stability và Effectiveness
+|---- kakuro.ipynb             # Notebook giữ output cells theo quy định nộp bài
+---- README.md
 ```

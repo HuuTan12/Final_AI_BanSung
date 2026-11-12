@@ -113,7 +113,7 @@ class NQueensProblem:
     ) -> Optional[Any]:
         """
         Renders a publication-ready matplotlib graphical visualization of the N-Queens chessboard.
-        Draws alternating wood/cream square colors, coordinates, and high-visibility Queen symbols (♛).
+        Draws alternating wood/cream square colors, coordinates, and high-visibility Queen symbols (Q).
         """
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
@@ -149,7 +149,7 @@ class NQueensProblem:
                 ax.text(
                     c + 0.5,
                     self.n - 1 - r + 0.5,
-                    "♛",
+                    "Q",
                     fontsize=font_size,
                     fontfamily="DejaVu Sans",
                     ha="center",

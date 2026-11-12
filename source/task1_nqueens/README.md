@@ -31,24 +31,24 @@ Faculty of Information Technology, Ton Duc Thang University (TDTU).
 
 ```text
 source/task1_nqueens/
-├── core/
-│   ├── problem.py           # NQueensProblem: board management, solution checking, DIMACS mapping
-│   └── constraints.py       # ConstraintGenerator: generates CNF clauses (ALO, AMO), theoretical formula
-├── solvers/
-│   ├── base_solver.py       # BaseSolver (abstract interface) and SolverResult dataclass
-│   ├── sat_solver.py        # Glucose3SATSolver: integrates Glucose3 from PySAT
-│   ├── heuristics.py        # VariableSelector: RandomSelector, MaxConflictSelector, HybridTabuSelector
-│   ├── min_conflicts.py     # MinConflictsSolver: optimized local search with O(1) frequency tables
-│   ├── step_min_conflicts.py# StepMinConflictsGenerator: step-by-step animation generator
-│   └── backtracking_solver.py # BacktrackingSolver: step-by-step DFS, all-solutions counting (OEIS A000170)
-├── ui/
-│   ├── pygame_nqueens.py    # High-Fidelity Interactive Chessboard GUI with live telemetry and laser beams
-│   └── notebook_visualizer.py # Matplotlib chessboard and solution gallery for Jupyter Notebooks
-├── experiments/
-│   └── benchmark.py         # BenchmarkRunner: automated benchmarking, plotting, and markdown tables
-├── main.py                  # CLI & GUI entry point
-├── nqueens.ipynb            # Jupyter Notebook with all outputs fully preserved
-└── README.md                # Documentation and running guide
+|---- core/
+|   |---- problem.py           # NQueensProblem: board management, solution checking, DIMACS mapping
+|   ---- constraints.py       # ConstraintGenerator: generates CNF clauses (ALO, AMO), theoretical formula
+|---- solvers/
+|   |---- base_solver.py       # BaseSolver (abstract interface) and SolverResult dataclass
+|   |---- sat_solver.py        # Glucose3SATSolver: integrates Glucose3 from PySAT
+|   |---- heuristics.py        # VariableSelector: RandomSelector, MaxConflictSelector, HybridTabuSelector
+|   |---- min_conflicts.py     # MinConflictsSolver: optimized local search with O(1) frequency tables
+|   |---- step_min_conflicts.py# StepMinConflictsGenerator: step-by-step animation generator
+|   ---- backtracking_solver.py # BacktrackingSolver: step-by-step DFS, all-solutions counting (OEIS A000170)
+|---- ui/
+|   |---- pygame_nqueens.py    # High-Fidelity Interactive Chessboard GUI with live telemetry and laser beams
+|   ---- notebook_visualizer.py # Matplotlib chessboard and solution gallery for Jupyter Notebooks
+|---- experiments/
+|   ---- benchmark.py         # BenchmarkRunner: automated benchmarking, plotting, and markdown tables
+|---- main.py                  # CLI & GUI entry point
+|---- nqueens.ipynb            # Jupyter Notebook with all outputs fully preserved
+---- README.md                # Documentation and running guide
 ```
 
 ---
@@ -59,7 +59,7 @@ The project includes an interactive graphical interface (`pygame_nqueens.py`) de
 
 ### A. Key Visual & Interactive Features
 1. **Interactive Chessboard Rendering:**
-   - Supports dynamic board sizes $N \in [4, 16]$ with crisp scalable vector royal crowns (♛).
+   - Supports dynamic board sizes $N \in [4, 16]$ with crisp scalable vector royal crowns (Q).
    - Alternating cream/slate tiles, coordinate axes ($A..H, 1..8$ or $0..N-1$).
    - **Glowing Red Laser Beams:** Highlights attacking pairs of queens in real time with laser effect.
    - **Candidate Row Overlays:** During search, shows conflict numbers on each row of the selected column and safe green squares.
@@ -86,9 +86,9 @@ The project includes an interactive graphical interface (`pygame_nqueens.py`) de
 | **Step Forward (+1)** | `RIGHT` / `S` | Execute exactly one forward search step |
 | **Step Backward (-1)** | `LEFT` / `A` | Rewind one step back in history (Step History Undo) |
 | **Reset** | `R` | Reset chessboard and re-initialize active solver |
-| **Speed Multiplier** | `1` .. `5` | 1x, 2x, 5x, 10x, or ⚡ Max (Instant) |
+| **Speed Multiplier** | `1` .. `5` | 1x, 2x, 5x, 10x, or  Max (Instant) |
 | **Select Board Size N** | Click `[-]` / `[+]` | Change chessboard dimension $N = 4, 6, 8, 10, 12, 16$ |
-| **Browse Solutions** | Click `◀ / ▶` | Cycle through distinct valid solution configurations |
+| **Browse Solutions** | Click `LEFT / RIGHT` | Cycle through distinct valid solution configurations |
 | **Manual Placement** | Left Click | Click any square to place, move, or remove a queen |
 
 ---

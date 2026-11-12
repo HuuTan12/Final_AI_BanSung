@@ -101,35 +101,35 @@ jupyter notebook kakuro.ipynb
 ## 4. Repository Structure
 ```
 Final_AI_BanSung/
-├── requirements.txt         # Project dependencies
-├── README.md                # General setup and running instructions
-├── demo.txt                 # URL to recorded video demonstration
-├── docs/
-│   ├── 2627-HK1-AI-CK.pdf   # Official course assignment requirements
-│   ├── report_structure_guide.md
-│   └── architecture_and_design_diagrams.md
-└── source/
-    ├── task1_nqueens/       # Task 1: Propositional Logic & Min-Conflicts
-    │   ├── core/            # Problem definitions and CNF generator
-    │   ├── solvers/         # Glucose3 SAT and Min-Conflicts solvers
-    │   ├── experiments/     # Benchmarks and evaluation scripts
-    │   ├── ui/              # Pygame UI and Matplotlib visualizer
-    │   ├── nqueens.ipynb    # Executed notebook with preserved cell outputs
-    │   └── main.py
-    ├── task2_tank/          # Task 2: Adversarial Search (Tank Battle)
-    │   ├── engine/          # Game physics, rules, actions, entities, maps
-    │   ├── agents/          # Minimax, AlphaBeta, Heuristics, External loader
-    │   ├── experiments/     # Tournament and 4-agent search benchmark
-    │   ├── ui/              # Pygame battle simulator and telemetry
-    │   ├── maps/            # 9 ASCII map configurations
-    │   └── main.py
-    └── task3_kakuro/        # Task 3: Constraint Satisfaction Problems
-        ├── csp/             # Variable, RunConstraint, and KakuroCSP classes
-        ├── solver/          # AC-3, Forward Checking, MRV, LCV, Backtracking
-        ├── experiments/     # Correctness, Stability, and Ablation study
-        ├── puzzles/         # sample_5x5.json and complex_9x9.json
-        ├── ui/              # Pygame Visualizer for domains and backtracking
-        ├── kakuro.ipynb     # Executed notebook with preserved cell outputs
-        └── main.py
+|---- requirements.txt         # Project dependencies
+|---- README.md                # General setup and running instructions
+|---- demo.txt                 # URL to recorded video demonstration
+|---- docs/
+|   |---- 2627-HK1-AI-CK.pdf   # Official course assignment requirements
+|   |---- report_structure_guide.md
+|   ---- architecture_and_design_diagrams.md
+---- source/
+    |---- task1_nqueens/       # Task 1: Propositional Logic & Min-Conflicts
+    |   |---- core/            # Problem definitions and CNF generator
+    |   |---- solvers/         # Glucose3 SAT and Min-Conflicts solvers
+    |   |---- experiments/     # Benchmarks and evaluation scripts
+    |   |---- ui/              # Pygame UI and Matplotlib visualizer
+    |   |---- nqueens.ipynb    # Executed notebook with preserved cell outputs
+    |   ---- main.py
+    |---- task2_tank/          # Task 2: Adversarial Search (Tank Battle)
+    |   |---- engine/          # Game physics, rules, actions, entities, maps
+    |   |---- agents/          # Minimax, AlphaBeta, Heuristics, External loader
+    |   |---- experiments/     # Tournament and 4-agent search benchmark
+    |   |---- ui/              # Pygame battle simulator and telemetry
+    |   |---- maps/            # 9 ASCII map configurations
+    |   ---- main.py
+    ---- task3_kakuro/        # Task 3: Constraint Satisfaction Problems
+        |---- csp/             # Variable, RunConstraint, and KakuroCSP classes
+        |---- solver/          # AC-3, Forward Checking, MRV, LCV, Backtracking
+        |---- experiments/     # Correctness, Stability, and Ablation study
+        |---- puzzles/         # sample_5x5.json and complex_9x9.json
+        |---- ui/              # Pygame Visualizer for domains and backtracking
+        |---- kakuro.ipynb     # Executed notebook with preserved cell outputs
+        ---- main.py
 ```
 

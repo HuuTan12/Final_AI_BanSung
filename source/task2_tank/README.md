@@ -45,42 +45,42 @@ Faculty of Information Technology, Ton Duc Thang University (TDTU).
 
 ```text
 source/task2_tank/
-├── maps/                            # 9 Tactical ASCII Map Scenarios (.txt)
-│   ├── 01_classic_battlecity.txt    # Standard Battle City layout
-│   ├── 02_open_duel.txt             # Open terrain, minimal cover
-│   ├── 03_tactical_maze.txt         # Winding chokepoints and corridors
-│   ├── 04_fortress_siege.txt        # Fortified base outposts
-│   ├── 05_sniper_valley.txt         # Long-range central corridor + ambush flanks
-│   ├── 06_twin_citadels.txt         # Symmetrical twin castles with gated walls
-│   ├── 07_iron_labyrinth.txt        # Complex maze testing non-Euclidean pathfinding
-│   ├── 08_crossfire_arena.txt       # Esports tournament arena with diamond bunker
-│   └── 09_citadel_gauntlet.txt      # High-density multi-obstacle stronghold (#=3HP, W=2HP, S=1HP, B=Bush)
-├── engine/
-│   ├── actions.py                   # 6 Actions (MOVE_*, FIRE, STAY) and Direction enum
-│   ├── entities.py                  # Tank (HP 6), Base (HP 9), Wall (HP 3), Bullet (Speed 3)
-│   ├── game_state.py                # GameState: grid, entities, turn management, terminal test, utility
-│   ├── rules.py                     # GameRules: transition function RESULT(s, a), cell-by-cell collision
-│   ├── map_loader.py                # MapLoader: dynamic ASCII parser, validation, and map cycling
-│   └── maps.py                      # MapBuilder: programmatic map generators and fallback builders
-├── agents/
-│   ├── base_agent.py                # Abstract BaseAgent interface and SearchStats dataclass
-│   ├── evaluator.py                 # TankEvaluator: linear weighted heuristic EVAL(s)
-│   ├── minimax_agent.py             # Config 1: Pure Minimax Search (Req 2)
-│   ├── alphabeta_agent.py           # Config 2: Alpha-Beta Pruning Search (Req 2)
-│   ├── heuristic_minimax_agent.py   # Config 3: Heuristic Minimax Search (Req 2)
-│   ├── heuristic_alphabeta_agent.py # Config 4: Heuristic Alpha-Beta Search (Req 2)
-│   ├── iterative_deepening_agent.py # Proposed: Iterative Deepening with Transposition Table
-│   ├── greedy_agent.py              # Proposed: 1-Ply Greedy Tactical Reflex Baseline
-│   ├── human_agent.py               # Human Controller: Keyboard & On-screen D-Pad
-│   └── external/
-│       └── sample_rival_agent.py    # Example rival agent from another student group
-├── agent_loader.py                  # Dynamic plugin loader for external student code
-├── ui/
-│   └── pygame_ui.py                 # English Pygame GUI with live HUD, realistic physics, Kenney sprites
-├── experiments/
-│   └── benchmark_tanks.py           # Comparative benchmark and tournament runner
-├── main.py                          # CLI entrypoint for GUI and Benchmark modes
-└── README.md                        # Task 2 documentation
+|---- maps/                            # 9 Tactical ASCII Map Scenarios (.txt)
+|   |---- 01_classic_battlecity.txt    # Standard Battle City layout
+|   |---- 02_open_duel.txt             # Open terrain, minimal cover
+|   |---- 03_tactical_maze.txt         # Winding chokepoints and corridors
+|   |---- 04_fortress_siege.txt        # Fortified base outposts
+|   |---- 05_sniper_valley.txt         # Long-range central corridor + ambush flanks
+|   |---- 06_twin_citadels.txt         # Symmetrical twin castles with gated walls
+|   |---- 07_iron_labyrinth.txt        # Complex maze testing non-Euclidean pathfinding
+|   |---- 08_crossfire_arena.txt       # Esports tournament arena with diamond bunker
+|   ---- 09_citadel_gauntlet.txt      # High-density multi-obstacle stronghold (#=3HP, W=2HP, S=1HP, B=Bush)
+|---- engine/
+|   |---- actions.py                   # 6 Actions (MOVE_*, FIRE, STAY) and Direction enum
+|   |---- entities.py                  # Tank (HP 6), Base (HP 9), Wall (HP 3), Bullet (Speed 3)
+|   |---- game_state.py                # GameState: grid, entities, turn management, terminal test, utility
+|   |---- rules.py                     # GameRules: transition function RESULT(s, a), cell-by-cell collision
+|   |---- map_loader.py                # MapLoader: dynamic ASCII parser, validation, and map cycling
+|   ---- maps.py                      # MapBuilder: programmatic map generators and fallback builders
+|---- agents/
+|   |---- base_agent.py                # Abstract BaseAgent interface and SearchStats dataclass
+|   |---- evaluator.py                 # TankEvaluator: linear weighted heuristic EVAL(s)
+|   |---- minimax_agent.py             # Config 1: Pure Minimax Search (Req 2)
+|   |---- alphabeta_agent.py           # Config 2: Alpha-Beta Pruning Search (Req 2)
+|   |---- heuristic_minimax_agent.py   # Config 3: Heuristic Minimax Search (Req 2)
+|   |---- heuristic_alphabeta_agent.py # Config 4: Heuristic Alpha-Beta Search (Req 2)
+|   |---- iterative_deepening_agent.py # Proposed: Iterative Deepening with Transposition Table
+|   |---- greedy_agent.py              # Proposed: 1-Ply Greedy Tactical Reflex Baseline
+|   |---- human_agent.py               # Human Controller: Keyboard & On-screen D-Pad
+|   ---- external/
+|       ---- sample_rival_agent.py    # Example rival agent from another student group
+|---- agent_loader.py                  # Dynamic plugin loader for external student code
+|---- ui/
+|   ---- pygame_ui.py                 # English Pygame GUI with live HUD, realistic physics, Kenney sprites
+|---- experiments/
+|   ---- benchmark_tanks.py           # Comparative benchmark and tournament runner
+|---- main.py                          # CLI entrypoint for GUI and Benchmark modes
+---- README.md                        # Task 2 documentation
 ```
 
 ---
@@ -130,8 +130,8 @@ python source/task2_tank/main.py --p0 human --load_external source/task2_tank/ag
 | `S` / `ENTER` | **Step +1** | Advance exactly one turn with full cell-by-cell bullet flight |
 | `U` / `Z` | **Undo -1** | Rollback to the previous game state (Undo stack) |
 | `R` | **Reset** | Restart the match with initial conditions |
-| `M` | **Map ⟳** | Cycle through all 8 tactical map scenarios (`01` .. `08`) |
-| `1` .. `4` | **Speed Presets** | `0.5x Slow` (slow-motion analysis) $\rightarrow$ `1.0x Normal` $\rightarrow$ `2.0x Fast` $\rightarrow$ `⚡ Turbo` |
+| `M` | **Map ** | Cycle through all 8 tactical map scenarios (`01` .. `08`) |
+| `1` .. `4` | **Speed Presets** | `0.5x Slow` (slow-motion analysis) $\rightarrow$ `1.0x Normal` $\rightarrow$ `2.0x Fast` $\rightarrow$ ` Turbo` |
 | `ESC` | **Exit** | Quit application |
 
 ### B. Human Player Controls
@@ -142,7 +142,7 @@ python source/task2_tank/main.py --p0 human --load_external source/task2_tank/ag
   - `D` / `Right Arrow`: Move Right (`MOVE_RIGHT`)
   - `SPACE` / `F`: Fire Cannon (`FIRE`)
   - `X` / `C`: Stay in Place (`STAY`)
-- **Mouse:** Click the interactive on-screen **D-Pad (`▲`, `▼`, `◀`, `▶`, `💥 FIRE`, `⏸ STAY`)** on the HUD!
+- **Mouse:** Click the interactive on-screen **D-Pad (`UP`, `DOWN`, `LEFT`, `RIGHT`, ` FIRE`, ` STAY`)** on the HUD!
 
 ### C. Live In-Game Algorithm & Depth Switcher
 - Click **`<`** or **`>`** directly on Player 0 or Player 1's card to switch between any of the 8 algorithms on the fly.
