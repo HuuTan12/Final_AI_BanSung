@@ -20,16 +20,23 @@ class CSPHeuristics:
     def select_unassigned_variable(
         csp: KakuroCSP, 
         use_mrv: bool = True, 
-        use_degree: bool = True
+        use_degree: bool = True,
+        arbitrary: bool = False
     ) -> Optional[Cell]:
         """
         Chọn ô trắng chưa gán tiếp theo bằng MRV kết hợp Degree Heuristic.
+        Khi tắt MRV:
+        - arbitrary=False: chọn theo thứ tự tự nhiên (hàng ngang).
+        - arbitrary=True: chọn biến ngẫu nhiên/tùy ý (đại diện cho Pure Backtracking không heuristic).
         """
         unassigned_vars = [cell for cell in csp.variables.values() if not cell.is_assigned]
         if not unassigned_vars:
             return None
 
         if not use_mrv:
+            if arbitrary:
+                import random
+                return random.choice(unassigned_vars)
             return unassigned_vars[0]
 
         # 1. Tìm kích thước miền giá trị nhỏ nhất (MRV)

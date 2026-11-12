@@ -78,10 +78,12 @@ class KakuroVisualizer:
 
         # Available puzzles
         self.available_maps = [
-            ("5x5 Sample", "sample_5x5.json"),
-            ("9x9 Complex", "complex_9x9.json")
+            ("4x4 Easy", "easy_4x4.json"),
+            ("5x5 Medium", "medium_5x5.json"),
+            ("5x5 Sample (Page 4)", "sample_5x5.json"),
+            ("9x9 Complex (Page 5)", "complex_9x9.json")
         ]
-        self.current_map_idx = 0
+        self.current_map_idx = 2
 
         # Main window dimensions
         self.screen_width = 1360
@@ -270,18 +272,24 @@ class KakuroVisualizer:
 
         # Right control panel button layout
         px = 750
-        self.btn_maps = [
-            pygame.Rect(px + i * 270, 118, 255, 38)
-            for i in range(len(self.available_maps))
-        ]
-        self.btn_play = pygame.Rect(px, 305, 255, 38)
-        self.btn_fwd = pygame.Rect(px + 270, 305, 255, 38)
-        self.btn_back = pygame.Rect(px, 355, 255, 38)
-        self.btn_solve = pygame.Rect(px + 270, 355, 255, 38)
-        self.btn_reset = pygame.Rect(px, 405, 255, 38)
-        self.btn_pencil = pygame.Rect(px + 270, 405, 255, 38)
-        self.btn_slower = pygame.Rect(px, 455, 255, 32)
-        self.btn_faster = pygame.Rect(px + 270, 455, 255, 32)
+        btn_w = 265
+        gap = 20
+        self.btn_maps = []
+        for i in range(len(self.available_maps)):
+            col = i % 2
+            row = i // 2
+            bx = px + col * (btn_w + gap)
+            by = 114 + row * 38
+            self.btn_maps.append(pygame.Rect(bx, by, btn_w, 32))
+
+        self.btn_play = pygame.Rect(px, 320, btn_w, 36)
+        self.btn_fwd = pygame.Rect(px + btn_w + gap, 320, btn_w, 36)
+        self.btn_back = pygame.Rect(px, 364, btn_w, 36)
+        self.btn_solve = pygame.Rect(px + btn_w + gap, 364, btn_w, 36)
+        self.btn_reset = pygame.Rect(px, 408, btn_w, 36)
+        self.btn_pencil = pygame.Rect(px + btn_w + gap, 408, btn_w, 36)
+        self.btn_slower = pygame.Rect(px, 452, btn_w, 32)
+        self.btn_faster = pygame.Rect(px + btn_w + gap, 452, btn_w, 32)
 
     def run(self):
         """Main GUI loop."""
@@ -512,7 +520,7 @@ class KakuroVisualizer:
 
         # --- SECTION 1: PUZZLE SELECTOR ---
         lbl_map = self.font_heading.render("SELECT PUZZLE:", True, (226, 232, 240))
-        self.screen.blit(lbl_map, (px + 20, py + 74))
+        self.screen.blit(lbl_map, (px + 20, 84))
 
         mouse_pos = pygame.mouse.get_pos()
         for i, (name, filename) in enumerate(self.available_maps):
@@ -526,16 +534,16 @@ class KakuroVisualizer:
             self.screen.blit(txt, txt.get_rect(center=btn_rect.center))
 
         # --- SECTION 2: PROGRESS & TELEMETRY ---
-        stat_card = pygame.Rect(px + 20, py + 168, pw - 40, 115)
+        stat_card = pygame.Rect(px + 20, 196, pw - 40, 110)
         pygame.draw.rect(self.screen, CARD_BG, stat_card, border_radius=8)
 
         ev_total = max(1, len(self.events))
         pct = (self.current_event_idx / ev_total) * 100
         step_txt = f"Execution Step: {self.current_event_idx:,} / {len(self.events):,} ({pct:.1f}%)"
-        self.screen.blit(self.font_btn.render(step_txt, True, TEXT_MAIN), (px + 32, py + 180))
+        self.screen.blit(self.font_btn.render(step_txt, True, TEXT_MAIN), (px + 32, 206))
 
         # Progress Bar
-        bar_rect = pygame.Rect(px + 32, py + 208, pw - 64, 10)
+        bar_rect = pygame.Rect(px + 32, 230, pw - 64, 10)
         pygame.draw.rect(self.screen, (30, 36, 48), bar_rect, border_radius=5)
         fill_w = int((self.current_event_idx / ev_total) * bar_rect.width)
         if fill_w > 0:
@@ -545,10 +553,10 @@ class KakuroVisualizer:
         msg = self.status_message
         if len(msg) > 54:
             msg = msg[:51] + "..."
-        self.screen.blit(self.font_status.render(f"Status: {msg}", True, (203, 213, 225)), (px + 32, py + 228))
+        self.screen.blit(self.font_status.render(f"Status: {msg}", True, (203, 213, 225)), (px + 32, 250))
 
         stat_info = f"Nodes: {self.solve_result.nodes_explored:,}  |  Backtracks: {self.solve_result.backtracks:,}  |  Time: {self.solve_result.execution_time:.3f}s"
-        self.screen.blit(self.font_status.render(stat_info, True, TEXT_MUTED), (px + 32, py + 252))
+        self.screen.blit(self.font_status.render(stat_info, True, TEXT_MUTED), (px + 32, 274))
 
         # --- SECTION 3: PLAYBACK CONTROLS ---
         self._draw_btn(self.btn_play, "PAUSE" if self.is_playing else "PLAY / START", BTN_PRIMARY, mouse_pos)

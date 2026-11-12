@@ -3,7 +3,7 @@ notebook_visualizer.py - Interactive Matplotlib Chessboard Visualizer for Jupyte
 Course: Introduction to Artificial Intelligence (503043)
 Author: Student Group
 Description:
-    Renders publication-quality chessboard diagrams with queen pieces (♛),
+    Renders publication-quality chessboard diagrams with queen pieces (Q),
     conflict lines, candidate highlighting, and solution galleries directly
     within Jupyter Notebooks (nqueens.ipynb) and reports.
 """
@@ -80,14 +80,14 @@ def visualize_board(
             ax.plot([x1, x2], [y1, y2], color=col_conflict_line, linestyle="--", linewidth=2.5, alpha=0.85, zorder=3)
             ax.plot([x1, x2], [y1, y2], color="white", linestyle="-", linewidth=1.0, alpha=0.6, zorder=4)
 
-    # Draw Queens (♛)
+    # Draw Queens (Q)
     for c in range(n):
         r = queens[c]
         if r != -1:
             q_color = "#C0392B" if (r, c) in conflicted_cells else "#F39C12"
             # Text shadow
             ax.text(
-                c + 0.52, n - 1 - r + 0.48, "♛",
+                c + 0.52, n - 1 - r + 0.48, "Q",
                 fontsize=240 // n,
                 ha="center", va="center",
                 color="#1E272C", alpha=0.45,
@@ -95,7 +95,7 @@ def visualize_board(
             )
             # Main queen
             ax.text(
-                c + 0.5, n - 1 - r + 0.5, "♛",
+                c + 0.5, n - 1 - r + 0.5, "Q",
                 fontsize=240 // n,
                 fontfamily="DejaVu Sans",
                 ha="center", va="center",
@@ -119,8 +119,8 @@ def visualize_board(
 
     # Title Banner
     if title is None:
-        conflict_msg = f"{len(conflicts)} Conflicts" if conflicts else "Valid (0 Conflicts) ✓"
-        title = f"N-Queens Board (N = {n}) — {conflict_msg}"
+        conflict_msg = f"{len(conflicts)} Conflicts" if conflicts else "Valid (0 Conflicts) [OK]"
+        title = f"N-Queens Board (N = {n}) -- {conflict_msg}"
 
     ax.set_title(title, fontsize=12, fontweight="bold", pad=10)
     plt.tight_layout()

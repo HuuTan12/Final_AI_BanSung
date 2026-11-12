@@ -120,7 +120,7 @@ class ConstraintPropagator:
     def forward_check(self, csp: KakuroCSP, var: Cell, val: int) -> Optional[Dict[Cell, Set[int]]]:
         """
         Forward Checking: Khi var được gán val, loại bỏ các giá trị không hợp lệ
-        khỏi miền giá trị của các ô chưa gán thuộc cùng Run.
+        khỏi miền giá trị của các ô chưa gán thuộc cùng Run.
         
         Trả về:
         - Dict[Cell, Set[int]]: Tập các giá trị bị tỉa (dùng để hoàn tác - backtrack).
