@@ -91,7 +91,7 @@ class NQueensProblem:
             print("No valid board to display.")
             return
 
-        print(f"\n--- N-Queens Board (N = {self.n}) ---")
+        print(f"\nN-Queens Board (N = {self.n})")
         for r in range(self.n):
             row_cells = []
             for c in range(self.n):

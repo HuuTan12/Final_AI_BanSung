@@ -18,8 +18,6 @@ source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if source_dir not in sys.path:
     sys.path.insert(0, source_dir)
 
-from task2_tank.engine.maps import MapBuilder
-from task2_tank.engine.rules import GameRules
 from task2_tank.agents.minimax_agent import MinimaxAgent
 from task2_tank.agents.alphabeta_agent import AlphaBetaAgent
 from task2_tank.agents.heuristic_minimax_agent import HeuristicMinimaxAgent
@@ -87,8 +85,12 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
     print("2-Human PvP Controls: P0 uses [WASD + F/SPACE fire, Q stay] | P1 uses [Arrows + / fire, . stay] | or click On-Screen D-Pad!")
 
     import time
+    import concurrent.futures
     state_history = [state.clone()]
     last_ai_turn_time = 0.0
+
+    ai_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    ai_future = None
 
     running = True
     while running:
@@ -98,18 +100,23 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
         p0_is_human = getattr(agent0, "is_human", False)
         p1_is_human = getattr(agent1, "is_human", False)
 
+        gui.active_game_state = state
+
         running = gui.handle_events(
             active_player_is_human=active_is_human,
             current_pid=current_pid,
             p0_is_human=p0_is_human,
             p1_is_human=p1_is_human,
         )
-        if not running:
+        if not running or getattr(gui, "quit_requested", False):
             break
 
         # Check if user switched algorithms or depth on the HUD
         if gui.agent_changed:
             gui.agent_changed = False
+            ai_future = None
+            gui.ai_thinking = False
+            gui.ai_thinking_pid = None
             k0, d0 = gui.get_selected_agent_key(0)
             k1, d1 = gui.get_selected_agent_key(1)
             agent0 = get_agent_by_name(k0, depth=d0)
@@ -121,6 +128,9 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             is_prev = getattr(gui, "map_prev_requested", False)
             gui.map_requested = False
             gui.map_prev_requested = False
+            ai_future = None
+            gui.ai_thinking = False
+            gui.ai_thinking_pid = None
             next_map = (
                 MapLoader.get_prev_map_name(current_map_name)
                 if is_prev else MapLoader.get_next_map_name(current_map_name)
@@ -142,6 +152,9 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
         # Handle match reset (Key R or Reset button)
         if gui.restart_requested:
             gui.restart_requested = False
+            ai_future = None
+            gui.ai_thinking = False
+            gui.ai_thinking_pid = None
             state, display_name = MapLoader.load_by_query(current_map_name)
             state.max_cycles = max_cycles
             gui.current_map_title = display_name
@@ -158,6 +171,9 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
         # Handle undo step (Key U or Undo button)
         if gui.undo_requested:
             gui.undo_requested = False
+            ai_future = None
+            gui.ai_thinking = False
+            gui.ai_thinking_pid = None
             if len(state_history) > 1:
                 state_history.pop()
                 state = state_history[-1].clone()
@@ -169,6 +185,8 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
 
         # If terminal, keep rendering victory modal until user exits, resets, or undos
         if state.is_terminal():
+            ai_future = None
+            gui.ai_thinking = False
             gui.render(state, agent0, agent1)
             continue
 
@@ -177,23 +195,48 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.render(state, agent0, agent1)
             continue
 
-        # Handle Human Player Turn: Wait for human input from active player's queue
+        # Handle Human Player Turn: Wait for human input from queue or continuous key-holding
         if active_is_human:
+            if getattr(active_agent, "turn_start_time", 0.0) == 0.0:
+                if hasattr(active_agent, "start_turn"):
+                    active_agent.start_turn()
+
             queued_act = gui.get_queued_human_action(current_pid)
+            if queued_act is None:
+                queued_act = gui.poll_held_human_keys(current_pid, p0_is_human, p1_is_human)
+
             if queued_act is None:
                 gui.render(state, agent0, agent1)
                 continue
             else:
                 action = queued_act
+                if hasattr(active_agent, "record_decision"):
+                    active_agent.record_decision(action)
+                if hasattr(active_agent, "turn_start_time"):
+                    active_agent.turn_start_time = 0.0
         else:
-            # Slower, visually intuitive pacing between AI turns (without freezing GUI events)
-            if not gui.step_requested:
-                turn_delay = 0.35 / max(0.25, gui.speed_multiplier)
-                if time.perf_counter() - last_ai_turn_time < turn_delay:
-                    gui.render(state, agent0, agent1)
-                    continue
-            gui.step_requested = False
-            action = active_agent.choose_action(state, current_pid)
+            # Handle AI turn: Asynchronous non-blocking search for solid 60 FPS
+            if ai_future is None:
+                if not (p0_is_human or p1_is_human) and not gui.step_requested:
+                    turn_delay = 0.35 / max(0.25, gui.speed_multiplier)
+                    if time.perf_counter() - last_ai_turn_time < turn_delay:
+                        gui.render(state, agent0, agent1)
+                        continue
+
+                gui.step_requested = False
+                gui.ai_thinking = True
+                gui.ai_thinking_pid = current_pid
+                cloned_s = state.clone()
+                ai_future = ai_executor.submit(active_agent.choose_action, cloned_s, current_pid)
+
+            if not ai_future.done():
+                gui.render(state, agent0, agent1)
+                continue
+
+            action = ai_future.result()
+            ai_future = None
+            gui.ai_thinking = False
+            gui.ai_thinking_pid = None
             last_ai_turn_time = time.perf_counter()
 
         gui.step_requested = False
@@ -206,10 +249,14 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.add_combat_log(f"[C{state.game_cycle:02d}] {p_tag} -> {action.value} ({active_agent.stats.explored_nodes} nodes, {active_agent.stats.execution_time*1000:.1f}ms)", log_col)
 
         next_state = gui.animate_turn(state, action, agent0, agent1)
+        if getattr(gui, "quit_requested", False):
+            break
 
         state = next_state
         state_history.append(state.clone())
         gui.render(state, agent0, agent1)
+
+    ai_executor.shutdown(wait=False)
 
     if PYGAME_AVAILABLE:
         try:

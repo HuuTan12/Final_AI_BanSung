@@ -134,30 +134,33 @@ python source/task2_tank/main.py --p0 human --load_external source/task2_tank/ag
 | `1` .. `4` | **Speed Presets** | `0.5x Slow` (slow-motion analysis) $\rightarrow$ `1.0x Normal` $\rightarrow$ `2.0x Fast` $\rightarrow$ ` Turbo` |
 | `ESC` | **Exit** | Quit application |
 
-### B. Human Player Controls
-<<<<<<< HEAD
-- **Keyboard (1 Human vs AI):** use either key zone below.
-- **Keyboard (2-Human PvP):** each player has a dedicated zone so simultaneous presses never collide.
+### B. Optimized Human Player Controls & Tactical Features
+
+- **Continuous Key-Hold Driving (Arcade Smoothness):**
+  - Hold down any movement key (`W`/`A`/`S`/`D` or Arrow keys) to drive continuously and smoothly across the map without stutter or key-mashing.
+  - Smart Input Buffer ensures moves queued during bullet animations are executed immediately on turn start.
+
+- **Keyboard Layouts:**
+  - **1 Human vs AI:** Freely use either `WASD` or `Arrow Keys` for movement; `SPACE` / `F` / `/` to Fire; `Q` / `.` to Stay.
+  - **2-Human PvP (Dedicated Zones):**
 
 | Action | Player 0 (Blue) – Left hand | Player 1 (Red) – Right hand |
 |:---|:---:|:---:|
-| Move Up / Down / Left / Right | `W` / `S` / `A` / `D` | `↑` / `↓` / `←` / `→` |
+| Move Up / Down / Left / Right | `W` / `S` / `A` / `D` *(hold to drive)* | `↑` / `↓` / `←` / `→` *(hold to drive)* |
 | Fire Cannon (`FIRE`) | `F` or `SPACE` | `/` (alt: `Numpad 0`, `Right Ctrl`) |
 | Stay in Place (`STAY`) | `Q` or `X` | `.` (alt: `Numpad .`) |
 
-> Player 1's `/` and `.` keys sit directly above the arrow cluster on both full-size and laptop keyboards, so the right hand never leaves the arrows.
+- **Direct Battlefield Mouse Controls:**
+  - **Left-Click on adjacent cells:** Immediately move into that cell.
+  - **Left-Click on own tank:** Stay in place (`STAY`).
+  - **Left-Click on target along line of fire (or Right-Click anywhere):** Quick Fire cannon (`FIRE`)!
+  - **Click on-screen D-Pad:** Clickable HUD buttons for touchpads and mice.
 
-- **Mouse:** Click the interactive on-screen **D-Pad (`▲`, `▼`, `◀`, `▶`, `💥 FIRE`, `⏸ STAY`)** on the HUD!
-=======
-- **Keyboard:**
-  - `W` / `Up Arrow`: Move Up (`MOVE_UP`)
-  - `S` / `Down Arrow`: Move Down (`MOVE_DOWN`)
-  - `A` / `Left Arrow`: Move Left (`MOVE_LEFT`)
-  - `D` / `Right Arrow`: Move Right (`MOVE_RIGHT`)
-  - `SPACE` / `F`: Fire Cannon (`FIRE`)
-  - `X` / `C`: Stay in Place (`STAY`)
-- **Mouse:** Click the interactive on-screen **D-Pad (`UP`, `DOWN`, `LEFT`, `RIGHT`, ` FIRE`, ` STAY`)** on the HUD!
->>>>>>> 75bb3764e75b0ba43aba893f626ae9dd1e082237
+- **Tactical Visual Aids:**
+  - **Tactical Laser Aim Line:** Real-time pulsing laser beam showing exact shell trajectory, impact cell, and `TARGET LOCK` indicator on enemy tanks/bases.
+  - **Threat Warning:** Flashing `! DANGER` crosshair alert if an enemy tank lines up a direct shot at you.
+  - **Human Telemetry:** Measures reaction latency in ms (`LIGHTNING`, `FAST`, `TACTICAL`, `CALCULATED`) alongside move and shot counts.
+  - **Non-blocking Asynchronous AI:** AI search runs concurrently in a background worker, maintaining a silky-smooth 60 FPS UI without freezing.
 
 ### C. Live In-Game Algorithm & Depth Switcher
 - Click **`<`** or **`>`** directly on Player 0 or Player 1's card to switch between any of the 8 algorithms on the fly.

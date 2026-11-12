@@ -112,6 +112,16 @@ class TankGameGUI:
         self.human_queues: Dict[int, Optional[Action]] = {0: None, 1: None}
         self.human_action_queued: Optional[Action] = None
 
+        # AI thinking state & non-blocking execution indicators
+        self.ai_thinking: bool = False
+        self.ai_thinking_pid: Optional[int] = None
+
+        # Fluid continuous key-holding & arcade driving controls
+        self.last_human_action_time: float = 0.0
+        self.human_repeat_delay: float = 0.16
+        self.active_game_state: Optional[GameState] = None
+        self.quit_requested: bool = False
+
         # Color Palette - Clean Modern Dark Slate
         self.COLOR_BG = (15, 18, 26)
         self.COLOR_SIDEBAR_BG = (20, 25, 36)
@@ -447,11 +457,83 @@ class TankGameGUI:
         if self.human_queues.get(pid) is not None:
             act = self.human_queues[pid]
             self.human_queues[pid] = None
+            self.last_human_action_time = time.perf_counter()
             return act
         if self.human_action_queued is not None:
             act = self.human_action_queued
             self.human_action_queued = None
+            self.last_human_action_time = time.perf_counter()
             return act
+        return None
+
+    def poll_held_human_keys(
+        self,
+        current_pid: int,
+        p0_is_human: bool,
+        p1_is_human: bool
+    ) -> Optional[Action]:
+        """
+        Polls continuously held keys for smooth, fluid tank driving without key mashing.
+        Enforces a balanced repeat cooldown (~160ms) so movement feels arcade-smooth.
+        """
+        if not self.match_started or self.is_paused:
+            return None
+
+        now = time.perf_counter()
+        repeat_interval = 0.16 / max(0.5, self.speed_multiplier)
+        if now - self.last_human_action_time < repeat_interval:
+            return None
+
+        keys = pygame.key.get_pressed()
+        both_humans = p0_is_human and p1_is_human
+
+        # Dedicated P0 left keys
+        if (current_pid == 0 and p0_is_human) or (not both_humans and p0_is_human):
+            if keys[pygame.K_w]:
+                self.last_human_action_time = now
+                return Action.MOVE_UP
+            if keys[pygame.K_s]:
+                self.last_human_action_time = now
+                return Action.MOVE_DOWN
+            if keys[pygame.K_a]:
+                self.last_human_action_time = now
+                return Action.MOVE_LEFT
+            if keys[pygame.K_d]:
+                self.last_human_action_time = now
+                return Action.MOVE_RIGHT
+
+        # Dedicated P1 right keys
+        if (current_pid == 1 and p1_is_human) or (not both_humans and p1_is_human):
+            if keys[pygame.K_UP]:
+                self.last_human_action_time = now
+                return Action.MOVE_UP
+            if keys[pygame.K_DOWN]:
+                self.last_human_action_time = now
+                return Action.MOVE_DOWN
+            if keys[pygame.K_LEFT]:
+                self.last_human_action_time = now
+                return Action.MOVE_LEFT
+            if keys[pygame.K_RIGHT]:
+                self.last_human_action_time = now
+                return Action.MOVE_RIGHT
+
+        # In 1-Human vs AI, allow arrow keys for P0 or WASD for P1 as well
+        if not both_humans:
+            target_pid = 0 if p0_is_human else 1
+            if current_pid == target_pid:
+                if keys[pygame.K_UP] or keys[pygame.K_w]:
+                    self.last_human_action_time = now
+                    return Action.MOVE_UP
+                if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                    self.last_human_action_time = now
+                    return Action.MOVE_DOWN
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                    self.last_human_action_time = now
+                    return Action.MOVE_LEFT
+                if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                    self.last_human_action_time = now
+                    return Action.MOVE_RIGHT
+
         return None
 
     def handle_events(
@@ -464,6 +546,9 @@ class TankGameGUI:
         """Processes mouse clicks, keyboard controls, and window events."""
         if not PYGAME_AVAILABLE or self.screen is None:
             return True
+
+        if self.quit_requested:
+            return False
 
         self.step_requested = False
         self.undo_requested = False
@@ -525,6 +610,46 @@ class TankGameGUI:
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
                 mx, my = event.pos
+
+                # Check Battlefield Click (Direct Tactical Mouse Navigation)
+                if mx < self.board_w and my < self.board_h:
+                    if any_human and self.match_started and not self.is_paused:
+                        target_pid = current_pid if (current_pid == 0 and p0_is_human) or (current_pid == 1 and p1_is_human) else (0 if p0_is_human else 1)
+                        if event.button == 3:
+                            # Right-click anywhere on battlefield = Quick FIRE!
+                            self.human_queues[target_pid] = Action.FIRE
+                            return True
+                        elif event.button == 1:
+                            cx = mx // self.cell_size
+                            cy = my // self.cell_size
+                            if self.active_game_state and target_pid in self.active_game_state.tanks:
+                                t = self.active_game_state.tanks[target_pid]
+                                if t.is_alive:
+                                    if cx == t.x and cy == t.y:
+                                        self.human_queues[target_pid] = Action.STAY
+                                    elif cx == t.x and cy == t.y - 1:
+                                        self.human_queues[target_pid] = Action.MOVE_UP
+                                    elif cx == t.x and cy == t.y + 1:
+                                        self.human_queues[target_pid] = Action.MOVE_DOWN
+                                    elif cx == t.x - 1 and cy == t.y:
+                                        self.human_queues[target_pid] = Action.MOVE_LEFT
+                                    elif cx == t.x + 1 and cy == t.y:
+                                        self.human_queues[target_pid] = Action.MOVE_RIGHT
+                                    else:
+                                        # Check if click is along current line of fire
+                                        tdx, tdy = t.direction.value
+                                        in_line = (tdx != 0 and cy == t.y and (cx - t.x) * tdx > 0) or (tdy != 0 and cx == t.x and (cy - t.y) * tdy > 0)
+                                        if in_line:
+                                            self.human_queues[target_pid] = Action.FIRE
+                                        else:
+                                            # Step towards target cell
+                                            off_x = cx - t.x
+                                            off_y = cy - t.y
+                                            if abs(off_x) > abs(off_y):
+                                                self.human_queues[target_pid] = Action.MOVE_RIGHT if off_x > 0 else Action.MOVE_LEFT
+                                            else:
+                                                self.human_queues[target_pid] = Action.MOVE_DOWN if off_y > 0 else Action.MOVE_UP
+                            return True
 
                 # Top-right Map Badge click (Left-click = Next Map, Right-click = Prev Map)
                 if self.map_badge_rect and self.map_badge_rect.collidepoint(mx, my):
@@ -649,14 +774,64 @@ class TankGameGUI:
         elif hasattr(agent1, "max_depth"):
             self.p1_depth = agent1.max_depth
 
-    def _pump_during_animation(self, current_pid: int, agent0: BaseAgent, agent1: BaseAgent) -> None:
-        """Captures human keyboard inputs during animations so 2-Human PvP feels super responsive."""
+    def _pump_during_animation(self, next_pid: int, agent0: BaseAgent, agent1: BaseAgent) -> bool:
+        """
+        Pumps events during animations so human controls feel instantaneous and hotkeys remain responsive.
+        Returns False if the user closed the window or hit ESC.
+        """
         p0_h = getattr(agent0, "is_human", False)
         p1_h = getattr(agent1, "is_human", False)
-        for event in pygame.event.get(pygame.KEYDOWN):
-            if p0_h or p1_h:
-                self._route_human_key(event.key, current_pid, p0_h, p1_h)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.quit_requested = True
+                return False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.quit_requested = True
+                    return False
+                elif event.key == pygame.K_p:
+                    self.is_paused = not self.is_paused
+                elif (p0_h or p1_h):
+                    self._route_human_key(event.key, next_pid, p0_h, p1_h)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
+                mx, my = event.pos
+                if mx < self.board_w and my < self.board_h:
+                    target_pid = next_pid if (next_pid == 0 and p0_h) or (next_pid == 1 and p1_h) else (0 if p0_h else 1)
+                    if event.button == 3:
+                        self.human_queues[target_pid] = Action.FIRE
+                    elif event.button == 1 and self.active_game_state and target_pid in self.active_game_state.tanks:
+                        t = self.active_game_state.tanks[target_pid]
+                        if t.is_alive:
+                            cx = mx // self.cell_size
+                            cy = my // self.cell_size
+                            if cx == t.x and cy == t.y:
+                                self.human_queues[target_pid] = Action.STAY
+                            elif cx == t.x and cy == t.y - 1:
+                                self.human_queues[target_pid] = Action.MOVE_UP
+                            elif cx == t.x and cy == t.y + 1:
+                                self.human_queues[target_pid] = Action.MOVE_DOWN
+                            elif cx == t.x - 1 and cy == t.y:
+                                self.human_queues[target_pid] = Action.MOVE_LEFT
+                            elif cx == t.x + 1 and cy == t.y:
+                                self.human_queues[target_pid] = Action.MOVE_RIGHT
+                            else:
+                                tdx, tdy = t.direction.value
+                                in_line = (tdx != 0 and cy == t.y and (cx - t.x) * tdx > 0) or (tdy != 0 and cx == t.x and (cy - t.y) * tdy > 0)
+                                if in_line:
+                                    self.human_queues[target_pid] = Action.FIRE
+                                else:
+                                    off_x = cx - t.x
+                                    off_y = cy - t.y
+                                    act = (Action.MOVE_RIGHT if off_x > 0 else Action.MOVE_LEFT) if abs(off_x) > abs(off_y) else (Action.MOVE_DOWN if off_y > 0 else Action.MOVE_UP)
+                                    self.human_queues[target_pid] = act
+                else:
+                    for dbtn in self.dpad_buttons:
+                        if dbtn["rect"].collidepoint(mx, my):
+                            self.human_queues[next_pid] = dbtn["action"]
+
         pygame.event.pump()
+        return True
 
     def animate_turn(
         self,
@@ -667,57 +842,77 @@ class TankGameGUI:
     ) -> GameState:
         """
         Executes a turn with smooth tank movement interpolation and cell-by-cell bullet flight.
-        Paced so the user can visually observe every tank maneuver and projectile collision.
+        Dynamically paced: Snappy, fluid, and responsive when a human is playing,
+        with obstacle bump recoil and eased trajectory interpolation.
         """
         next_state = state.clone()
         player_id = next_state.current_player
         tank = next_state.tanks.get(player_id)
         cs = self.cell_size
+        any_human = getattr(agent0, "is_human", False) or getattr(agent1, "is_human", False)
 
         # Phase 1: Apply Tank Action with smooth visual interpolation
         if action == Action.FIRE:
             if tank and tank.is_alive:
                 self.add_muzzle_flash(tank.x, tank.y, tank.direction)
             GameRules._fire_bullet(next_state, player_id)
-            fire_pause_frames = max(2, int(8 / self.speed_multiplier))
+            fire_pause_frames = max(1, int((3 if any_human else 6) / self.speed_multiplier))
             for _ in range(fire_pause_frames):
                 self.render(next_state, agent0, agent1, is_interpolating=True)
-                self._pump_during_animation(1 - player_id, agent0, agent1)
+                if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                    return next_state
                 self.clock.tick(self.fps)
 
         elif action == Action.STAY:
-            stay_frames = max(2, int(6 / self.speed_multiplier))
+            stay_frames = max(1, int((2 if any_human else 5) / self.speed_multiplier))
             for _ in range(stay_frames):
                 self.render(next_state, agent0, agent1, is_interpolating=True)
-                self._pump_during_animation(1 - player_id, agent0, agent1)
+                if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                    return next_state
                 self.clock.tick(self.fps)
 
         else:
             direction = Action.get_move_direction(action)
             if direction and tank and tank.is_alive:
                 old_x, old_y = tank.x, tank.y
-                self.add_tank_track(old_x, old_y, tank.direction)
                 GameRules._move_tank(next_state, player_id, direction)
                 new_x, new_y = tank.x, tank.y
 
-                # Smoothly glide the tank from (old_x, old_y) to (new_x, new_y)
-                move_frames = max(3, int(14 / self.speed_multiplier))
-                start_px, start_py = old_x * cs, old_y * cs
-                end_px, end_py = new_x * cs, new_y * cs
+                if new_x == old_x and new_y == old_y:
+                    # Obstacle bump recoil animation (fast 3-frame tactile feedback)
+                    dx, dy = direction.value
+                    bump_frames = max(2, int((3 if any_human else 5) / self.speed_multiplier))
+                    for f in range(1, bump_frames + 1):
+                        bump_mag = int(math.sin(f / bump_frames * math.pi) * 3)
+                        self.animated_tank_override[player_id] = (old_x * cs + dx * bump_mag, old_y * cs + dy * bump_mag, tank.direction)
+                        self.render(next_state, agent0, agent1, is_interpolating=True)
+                        if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                            self.animated_tank_override.clear()
+                            return next_state
+                        self.clock.tick(self.fps)
+                    self.animated_tank_override.clear()
+                else:
+                    self.add_tank_track(old_x, old_y, tank.direction)
+                    move_frames = max(2, int((7 if any_human else 12) / self.speed_multiplier))
+                    start_px, start_py = old_x * cs, old_y * cs
+                    end_px, end_py = new_x * cs, new_y * cs
 
-                for f in range(1, move_frames + 1):
-                    alpha = f / move_frames
-                    cur_px = int(start_px + (end_px - start_px) * alpha)
-                    cur_py = int(start_py + (end_py - start_py) * alpha)
-                    self.animated_tank_override[player_id] = (cur_px, cur_py, tank.direction)
-                    self.render(next_state, agent0, agent1, is_interpolating=True)
-                    self._pump_during_animation(1 - player_id, agent0, agent1)
-                    self.clock.tick(self.fps)
+                    for f in range(1, move_frames + 1):
+                        # Smooth sine ease-out interpolation
+                        alpha = math.sin((f / move_frames) * (math.pi / 2))
+                        cur_px = int(start_px + (end_px - start_px) * alpha)
+                        cur_py = int(start_py + (end_py - start_py) * alpha)
+                        self.animated_tank_override[player_id] = (cur_px, cur_py, tank.direction)
+                        self.render(next_state, agent0, agent1, is_interpolating=True)
+                        if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                            self.animated_tank_override.clear()
+                            return next_state
+                        self.clock.tick(self.fps)
 
-                self.animated_tank_override.clear()
+                    self.animated_tank_override.clear()
 
         # Phase 2: Realistic Cell-by-Cell Bullet Flight (3 cells per cycle)
-        frames_per_cell = max(3, int(12 / self.speed_multiplier))
+        frames_per_cell = max(2, int((5 if any_human else 10) / self.speed_multiplier))
 
         for _ in range(Bullet.SPEED):
             active_bullets = [b for b in next_state.bullets if b.is_active]
@@ -756,7 +951,8 @@ class TankGameGUI:
                     })
 
                 self.render(next_state, agent0, agent1, is_interpolating=True)
-                self._pump_during_animation(1 - player_id, agent0, agent1)
+                if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                    return next_state
                 self.clock.tick(self.fps)
 
             self.animated_bullets.clear()
@@ -808,9 +1004,11 @@ class TankGameGUI:
 
         # Animate any hit explosions briefly so the user sees the impact
         if self.explosions:
-            for _ in range(max(2, int(6 / self.speed_multiplier))):
+            exp_frames = max(2, int((3 if any_human else 6) / self.speed_multiplier))
+            for _ in range(exp_frames):
                 self.render(next_state, agent0, agent1, is_interpolating=True)
-                self._pump_during_animation(1 - player_id, agent0, agent1)
+                if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                    return next_state
                 self.clock.tick(self.fps)
 
         # Phase 3: Cleanup dead walls and Advance turn
@@ -1048,6 +1246,29 @@ class TankGameGUI:
                 center_y = ty + cs // 2
                 t_color = self.COLOR_P0_PRIMARY if pid == 0 else self.COLOR_P1_PRIMARY
                 is_active_turn = (state.current_player == pid and not state.is_terminal())
+                agent_obj = agent0 if pid == 0 else agent1
+                is_human_player = getattr(agent_obj, "is_human", False)
+
+                # AI Thinking Radar / Spinner on AI tank
+                if not is_human_player and self.ai_thinking and self.ai_thinking_pid == pid:
+                    radar_surf = pygame.Surface((cs + 16, cs + 16), pygame.SRCALPHA)
+                    radar_center = (cs // 2 + 8, cs // 2 + 8)
+                    radar_r = cs // 2 + 6
+                    rot_a = (self.anim_tick * 8) % 360
+                    pygame.draw.circle(radar_surf, (*self.COLOR_GOLD, 80), radar_center, radar_r, 2)
+                    for i in range(4):
+                        cur_ang = math.radians(rot_a + i * 90)
+                        prx = radar_center[0] + int(math.cos(cur_ang) * radar_r)
+                        pry = radar_center[1] + int(math.sin(cur_ang) * radar_r)
+                        pygame.draw.circle(radar_surf, self.COLOR_GOLD, (prx, pry), 2)
+                    self.screen.blit(radar_surf, (tx - 8, ty - 8))
+
+                    think_tag = self.font_coord.render("AI THINKING...", True, self.COLOR_GOLD)
+                    tt_w = think_tag.get_width() + 8
+                    tt_rect = pygame.Rect(center_x - tt_w // 2, ty - 17, tt_w, 14)
+                    pygame.draw.rect(self.screen, (16, 22, 34), tt_rect, border_radius=3)
+                    pygame.draw.rect(self.screen, self.COLOR_GOLD, tt_rect, 1, border_radius=3)
+                    self.screen.blit(think_tag, (tt_rect.x + 4, tt_rect.y))
 
                 # Highlight ring (pulsing when it's this tank's turn)
                 ring_surf = pygame.Surface((cs + 8, cs + 8), pygame.SRCALPHA)
@@ -1069,9 +1290,15 @@ class TankGameGUI:
 
                 self._draw_segmented_hp_bar(tx + 4, ty - 2, tank.hp, 6, seg_w=5, seg_h=4, color=t_color)
 
+                # Tactical Laser Aim Line & Mouse Reticle for Human Players
+                if is_human_player and not state.is_terminal():
+                    self._check_and_draw_threat_warning(state, tank, pid, cs)
+                    if is_active_turn and self.match_started and not self.is_paused:
+                        self._draw_tactical_aim_line(state, tank, pid, cs)
+                        self._draw_mouse_hover_controls(state, tank, pid, cs)
+
                 # Floating Turn Indicator for Human Players
-                agent_obj = agent0 if pid == 0 else agent1
-                if is_active_turn and self.match_started and getattr(agent_obj, "is_human", False):
+                if is_active_turn and self.match_started and is_human_player:
                     tag_surf = self.font_badge.render(f"P{pid} TURN", True, (255, 255, 255))
                     tw = tag_surf.get_width() + 8
                     th = 15
@@ -1091,6 +1318,155 @@ class TankGameGUI:
                     f_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
                     pygame.draw.circle(f_surf, (46, 125, 50, 200), (cs // 2 - 2, cs // 2 - 2), cs // 2 - 4)
                     self.screen.blit(f_surf, (px + 2, py + 2))
+
+    def _check_and_draw_threat_warning(self, state: GameState, tank, pid: int, cs: int) -> None:
+        """Draws a pulsing hazard border and alert badge if the opponent tank has line of sight."""
+        opp_id = 1 - pid
+        opp_tank = state.tanks.get(opp_id)
+        if not opp_tank or not opp_tank.is_alive:
+            return
+
+        odx, ody = opp_tank.direction.value
+        rx, ry = opp_tank.x + odx, opp_tank.y + ody
+        targeted = False
+        while 0 <= rx < state.width and 0 <= ry < state.height:
+            if rx == tank.x and ry == tank.y:
+                targeted = True
+                break
+            if (rx, ry) in state.walls and state.walls[(rx, ry)].is_alive:
+                break
+            if any(b.x == rx and b.y == ry and b.is_alive for b in state.bases.values()):
+                break
+            rx += odx
+            ry += ody
+
+        if targeted:
+            pulse_a = int(140 + 90 * math.sin(self.anim_tick * 0.25))
+            warn_surf = pygame.Surface((cs, cs), pygame.SRCALPHA)
+            pygame.draw.rect(warn_surf, (255, 50, 50, pulse_a), (0, 0, cs, cs), 2, border_radius=4)
+            self.screen.blit(warn_surf, (tank.x * cs, tank.y * cs))
+
+            alert_lbl = self.font_coord.render("! DANGER", True, (255, 230, 230))
+            aw = alert_lbl.get_width() + 6
+            ar = pygame.Rect(tank.x * cs + cs // 2 - aw // 2, tank.y * cs - 14, aw, 13)
+            pygame.draw.rect(self.screen, (200, 30, 30), ar, border_radius=2)
+            self.screen.blit(alert_lbl, (ar.x + 3, ar.y))
+
+    def _draw_tactical_aim_line(self, state: GameState, tank, pid: int, cs: int) -> None:
+        """
+        Draws a high-tech tactical laser line from tank muzzle to first collision object,
+        with impact reticle indicating whether it hits an enemy, wall, or base.
+        """
+        dx, dy = tank.direction.value
+        cx = tank.x * cs + cs // 2
+        cy = tank.y * cs + cs // 2
+
+        muzzle_x = cx + dx * (cs // 2 - 2)
+        muzzle_y = cy + dy * (cs // 2 - 2)
+
+        tx = tank.x + dx
+        ty = tank.y + dy
+        hit_type = "boundary"
+        hit_cell = (tx, ty)
+
+        while 0 <= tx < state.width and 0 <= ty < state.height:
+            hit_cell = (tx, ty)
+            if (tx, ty) in state.walls and state.walls[(tx, ty)].is_alive:
+                hit_type = "wall"
+                break
+            if any(b.x == tx and b.y == ty and b.is_alive for b_id, b in state.bases.items() if b_id != pid):
+                hit_type = "enemy_base"
+                break
+            if any(b.x == tx and b.y == ty and b.is_alive for b_id, b in state.bases.items() if b_id == pid):
+                hit_type = "own_base"
+                break
+            if any(t.x == tx and t.y == ty and t.is_alive for t_id, t in state.tanks.items() if t_id != pid):
+                hit_type = "enemy_tank"
+                break
+            tx += dx
+            ty += dy
+
+        end_px = hit_cell[0] * cs + cs // 2
+        end_py = hit_cell[1] * cs + cs // 2
+
+        if hit_type in ("enemy_tank", "enemy_base"):
+            laser_col = (255, 60, 60)
+            glow_col = (255, 120, 120)
+        elif hit_type == "wall":
+            laser_col = (245, 160, 40)
+            glow_col = (255, 210, 100)
+        elif hit_type == "own_base":
+            laser_col = (230, 80, 80)
+            glow_col = (255, 140, 140)
+        else:
+            laser_col = (56, 189, 248)
+            glow_col = (140, 225, 255)
+
+        pulse_alpha = int(120 + 80 * math.sin(self.anim_tick * 0.2))
+        laser_surf = pygame.Surface((self.board_w, self.board_h), pygame.SRCALPHA)
+        pygame.draw.line(laser_surf, (*glow_col, pulse_alpha // 2), (muzzle_x, muzzle_y), (end_px, end_py), 3)
+        pygame.draw.line(laser_surf, (*laser_col, pulse_alpha), (muzzle_x, muzzle_y), (end_px, end_py), 1)
+        self.screen.blit(laser_surf, (0, 0))
+
+        rx = hit_cell[0] * cs
+        ry = hit_cell[1] * cs
+        if 0 <= hit_cell[0] < state.width and 0 <= hit_cell[1] < state.height:
+            ret_rect = pygame.Rect(rx + 4, ry + 4, cs - 8, cs - 8)
+            pygame.draw.rect(self.screen, laser_col, ret_rect, 1, border_radius=4)
+            pygame.draw.line(self.screen, laser_col, (end_px - 8, end_py), (end_px + 8, end_py), 1)
+            pygame.draw.line(self.screen, laser_col, (end_px, end_py - 8), (end_px, end_py + 8), 1)
+
+            if hit_type in ("enemy_tank", "enemy_base"):
+                badge = self.font_coord.render("TARGET LOCK", True, (255, 255, 255))
+                b_w = badge.get_width() + 6
+                b_r = pygame.Rect(end_px - b_w // 2, ry - 14, b_w, 13)
+                pygame.draw.rect(self.screen, (220, 40, 40), b_r, border_radius=2)
+                self.screen.blit(badge, (b_r.x + 3, b_r.y))
+
+    def _draw_mouse_hover_controls(self, state: GameState, tank, pid: int, cs: int) -> None:
+        """
+        Renders sleek tactical hover indicators on cells adjacent to the tank,
+        showing available mouse movements and clicks.
+        """
+        mx, my = pygame.mouse.get_pos()
+        if not (0 <= mx < self.board_w and 0 <= my < self.board_h):
+            return
+
+        hover_x = mx // cs
+        hover_y = my // cs
+
+        neighbors = [
+            (tank.x, tank.y - 1, "UP"),
+            (tank.x, tank.y + 1, "DOWN"),
+            (tank.x - 1, tank.y, "LEFT"),
+            (tank.x + 1, tank.y, "RIGHT"),
+        ]
+
+        team_col = self.COLOR_P0_PRIMARY if pid == 0 else self.COLOR_P1_PRIMARY
+
+        for nx, ny, label in neighbors:
+            if 0 <= nx < state.width and 0 <= ny < state.height:
+                if hover_x == nx and hover_y == ny:
+                    cell_rect = pygame.Rect(nx * cs + 2, ny * cs + 2, cs - 4, cs - 4)
+                    h_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
+                    pygame.draw.rect(h_surf, (*team_col, 80), (0, 0, cs - 4, cs - 4), border_radius=4)
+                    self.screen.blit(h_surf, (cell_rect.x, cell_rect.y))
+                    pygame.draw.rect(self.screen, team_col, cell_rect, 2, border_radius=4)
+
+                    lbl_surf = self.font_coord.render(f"MOVE {label}", True, (255, 255, 255))
+                    lw = lbl_surf.get_width() + 6
+                    lr = pygame.Rect(cell_rect.centerx - lw // 2, cell_rect.centery - 7, lw, 14)
+                    pygame.draw.rect(self.screen, (16, 22, 34), lr, border_radius=2)
+                    self.screen.blit(lbl_surf, (lr.x + 3, lr.y))
+
+        if hover_x == tank.x and hover_y == tank.y:
+            cell_rect = pygame.Rect(tank.x * cs + 2, tank.y * cs + 2, cs - 4, cs - 4)
+            pygame.draw.rect(self.screen, self.COLOR_GOLD, cell_rect, 2, border_radius=4)
+            lbl_surf = self.font_coord.render("STAY", True, (255, 255, 255))
+            lw = lbl_surf.get_width() + 6
+            lr = pygame.Rect(cell_rect.centerx - lw // 2, cell_rect.centery - 7, lw, 14)
+            pygame.draw.rect(self.screen, (16, 22, 34), lr, border_radius=2)
+            self.screen.blit(lbl_surf, (lr.x + 3, lr.y))
 
     def _render_bullets(self, state: GameState) -> None:
         """Renders bullets either at interpolated flight positions or static cell positions."""
@@ -1641,8 +2017,13 @@ class TankGameGUI:
 
         is_human = getattr(agent, "is_human", False)
         if is_active_turn and self.match_started:
-            badge_text = "YOUR TURN" if is_human else "ACTIVE TURN"
-            badge_bg = (39, 174, 96) if is_human else primary_color
+            if not is_human and self.ai_thinking and self.ai_thinking_pid == pid:
+                badge_text = "AI THINKING..."
+                pulse_val = int(140 + 80 * math.sin(self.anim_tick * 0.2))
+                badge_bg = (230, pulse_val, 34)
+            else:
+                badge_text = "YOUR TURN" if is_human else "ACTIVE TURN"
+                badge_bg = (39, 174, 96) if is_human else primary_color
             tb_surf = self.font_badge.render(badge_text, True, (255, 255, 255))
             tb_w = tb_surf.get_width() + 12
             tb_rect = pygame.Rect(x + width - tb_w - 10, cy + 3, tb_w, 20)
@@ -1731,21 +2112,54 @@ class TankGameGUI:
             pygame.draw.rect(self.screen, self.COLOR_INSET_BG, kb_rect, border_radius=5)
             pygame.draw.rect(self.screen, primary_color if is_active_turn else self.COLOR_INSET_BORDER, kb_rect, 1, border_radius=5)
 
+            reac_ms = getattr(agent, "last_reaction_time", 0.0) * 1000.0
+            reac_str = f"{reac_ms:.0f} ms" if reac_ms > 0 else "Ready"
+            if reac_ms > 0:
+                if reac_ms < 250:
+                    speed_rank = "LIGHTNING"
+                    rank_col = self.COLOR_CYAN
+                elif reac_ms < 500:
+                    speed_rank = "FAST"
+                    rank_col = self.COLOR_EMERALD
+                elif reac_ms < 1000:
+                    speed_rank = "TACTICAL"
+                    rank_col = self.COLOR_GOLD
+                else:
+                    speed_rank = "CALCULATED"
+                    rank_col = self.COLOR_AMBER
+            else:
+                speed_rank = "READY"
+                rank_col = self.COLOR_EMERALD
+
+            moves_cnt = getattr(agent, "total_moves", 0)
+            shots_cnt = getattr(agent, "total_shots", 0)
+
+            # Left block: Reaction time tile
+            reac_lbl = self.font_metric_lbl.render("REACTION TIME", True, self.COLOR_TEXT_DIM)
+            self.screen.blit(reac_lbl, (x + 18, cy + 7))
+            reac_val = self.font_metric_val.render(reac_str, True, rank_col)
+            self.screen.blit(reac_val, (x + 18, cy + 24))
+
+            rank_badge = self.font_badge.render(speed_rank, True, (255, 255, 255))
+            rb_w = rank_badge.get_width() + 8
+            rb_rect = pygame.Rect(x + 105, cy + 25, rb_w, 16)
+            pygame.draw.rect(self.screen, rank_col, rb_rect, border_radius=3)
+            self.screen.blit(rank_badge, (rb_rect.x + 4, rb_rect.y + 1))
+
+            # Right block: Guidance & Stats
             if both_humans:
                 if pid == 0:
-                    k_title = "PLAYER 0 KEYS (LEFT KEYBOARD):"
-                    k_desc = "Move: [W][A][S][D]   |   Fire: [F] or [SPACE]   |   Stay: [Q]"
+                    k_desc = "P0: [WASD] move, [F/SPACE] fire, [Q] stay"
                 else:
-                    k_title = "PLAYER 1 KEYS (RIGHT KEYBOARD):"
-                    k_desc = "Move: [Arrow Keys]   |   Fire: [ / ] or [Num 0]   |   Stay: [ . ]"
+                    k_desc = "P1: [Arrows] move, [/] fire, [.] stay"
             else:
-                k_title = f"PLAYER {pid} HUMAN CONTROLS:"
-                k_desc = "Move: [WASD] / [Arrows]  |  Fire: [SPACE] / [ / ]  |  Stay: [Q] / [ . ]"
+                k_desc = "[WASD / Click Map] Move | [SPACE / R-Click] Fire"
+            kd_surf = self.font_bold.render(k_desc, True, (245, 248, 255))
+            self.screen.blit(kd_surf, (x + 185, cy + 7))
 
-            kt_surf = self.font_metric_lbl.render(k_title, True, self.COLOR_GOLD)
-            kd_surf = self.font_bold.render(k_desc, True, self.COLOR_TEXT)
-            self.screen.blit(kt_surf, (x + 18, cy + 6))
-            self.screen.blit(kd_surf, (x + 18, cy + 24))
+            tip_str = f"Stats: {moves_cnt} moves, {shots_cnt} shots | Hold key to drive continuously!"
+            tip_surf = self.font_small.render(tip_str, True, self.COLOR_GOLD)
+            self.screen.blit(tip_surf, (x + 185, cy + 26))
         else:
             stats = agent.stats if agent else None
             d_val = stats.search_depth if (stats and stats.search_depth > 0) else (1 if sel_key == "greedy" else cur_depth)
@@ -1818,7 +2232,7 @@ class TankGameGUI:
         if both_humans:
             hint_str = "2-Human PvP: P0 uses [WASD + F/SPACE]  |  P1 uses [Arrows + / .]"
         else:
-            hint_str = "Shortcuts: [P] Pause  |  [U] Undo  |  [R] Reset  |  [M] Change Map"
+            hint_str = "Tips: Hold WASD/Arrows to drive smoothly | Click map cells | R-Click Fire"
         hint_surf = self.font_small.render(hint_str, True, self.COLOR_TEXT_DIM)
         self.screen.blit(hint_surf, (x + 12, y + card_h - 22))
 
