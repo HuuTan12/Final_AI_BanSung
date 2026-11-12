@@ -1,0 +1,45 @@
+{
+  "name": "Kakuro Easy 4x4",
+  "rows": 4,
+  "cols": 4,
+  "horizontal_clues": [
+    {
+      "r": 1,
+      "c": 0,
+      "clue": 6,
+      "length": 3
+    },
+    {
+      "r": 2,
+      "c": 0,
+      "clue": 7,
+      "length": 3
+    },
+    {
+      "r": 3,
+      "c": 0,
+      "clue": 20,
+      "length": 3
+    }
+  ],
+  "vertical_clues": [
+    {
+      "r": 0,
+      "c": 1,
+      "clue": 7,
+      "length": 3
+    },
+    {
+      "r": 0,
+      "c": 2,
+      "clue": 15,
+      "length": 3
+    },
+    {
+      "r": 0,
+      "c": 3,
+      "clue": 11,
+      "length": 3
+    }
+  ]
+}
