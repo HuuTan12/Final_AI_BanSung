@@ -154,6 +154,52 @@ class TankGameGUI:
         self.COLOR_HP_YELLOW = (241, 196, 15)
         self.COLOR_HP_RED = (231, 76, 60)
 
+    def update_map_layout(self, width_cells: int, height_cells: int) -> None:
+        """
+        Dynamically adapts cell size, board dimensions, and window resolution:
+        - Prevents map clipping (Map 04 15x15, Map 05 21x11, etc. are 100% visible).
+        - Automatically shrinks window for smaller maps (no empty black voids).
+        - Perfectly aligns sidebar HUD to the right edge of the battlefield.
+        - Reloads scaled sprites and repositions interactive control buttons.
+        """
+        max_board_w = 930
+        max_board_h = 660
+        cs_w = max_board_w // width_cells
+        cs_h = max_board_h // height_cells
+        target_cs = max(36, min(46, cs_w, cs_h))
+
+        cs_changed = (target_cs != self.cell_size)
+        self.cell_size = target_cs
+
+        new_board_w = width_cells * self.cell_size
+        new_board_h = height_cells * self.cell_size
+        new_width_px = new_board_w + self.sidebar_width
+        new_height_px = max(new_board_h + 120, 760)
+
+        dim_changed = (
+            new_board_w != getattr(self, "board_w", 0) or
+            new_board_h != getattr(self, "board_h", 0) or
+            new_width_px != getattr(self, "width_px", 0) or
+            new_height_px != getattr(self, "height_px", 0)
+        )
+
+        self.board_w = new_board_w
+        self.board_h = new_board_h
+        self.width_px = new_width_px
+        self.height_px = new_height_px
+        self._last_map_dim = (width_cells, height_cells)
+
+        if PYGAME_AVAILABLE:
+            if self.screen is None:
+                self.screen = pygame.display.set_mode((self.width_px, self.height_px))
+            elif dim_changed:
+                self.screen = pygame.display.set_mode((self.width_px, self.height_px))
+
+        if cs_changed and hasattr(self, "sprites") and self.sprites:
+            self._load_sprites()
+
+        self._init_buttons()
+
     def init_display(self, width_cells: int, height_cells: int) -> bool:
         """Initializes Pygame window, fonts, buttons, and visual assets."""
         if not PYGAME_AVAILABLE:
@@ -164,12 +210,8 @@ class TankGameGUI:
             pygame.init()
             pygame.font.init()
 
-            self.board_w = width_cells * self.cell_size
-            self.board_h = height_cells * self.cell_size
-            self.width_px = self.board_w + self.sidebar_width
-            self.height_px = max(self.board_h + 110, 760)
+            self.update_map_layout(width_cells, height_cells)
 
-            self.screen = pygame.display.set_mode((self.width_px, self.height_px))
             pygame.display.set_caption("AI Tank Battle - Adversarial Search Visualizer (TDTU)")
             self.clock = pygame.time.Clock()
 
@@ -1033,6 +1075,11 @@ class TankGameGUI:
         if not PYGAME_AVAILABLE or self.screen is None:
             return
 
+        # Adaptive layout safeguard: auto-update layout if state dimensions changed
+        if not is_interpolating:
+            if getattr(self, "_last_map_dim", None) != (state.width, state.height):
+                self.update_map_layout(state.width, state.height)
+
         self.anim_tick += 1
         self.eval_score = self.evaluator.evaluate(state, player_id=0)
 
@@ -1076,7 +1123,7 @@ class TankGameGUI:
 
     def _render_start_overlay(self) -> None:
         """Draws a clickable 'READY TO START' banner in the center of the battlefield before match start."""
-        bw = 380
+        bw = min(380, max(220, self.board_w - 40))
         bh = 46
         bx = (self.board_w - bw) // 2
         by = (self.board_h - bh) // 2
@@ -1090,7 +1137,12 @@ class TankGameGUI:
         pygame.draw.rect(self.screen, bg_col, self.start_banner_rect, border_radius=8)
         pygame.draw.rect(self.screen, (80, 235, 145), self.start_banner_rect, 2, border_radius=8)
 
-        txt = self.font_large.render("CLICK HERE OR [START] TO BEGIN MATCH", True, (255, 255, 255))
+        txt_str = "CLICK HERE OR [START] TO BEGIN MATCH"
+        txt = self.font_large.render(txt_str, True, (255, 255, 255))
+        if txt.get_width() > bw - 20:
+            txt = self.font_bold.render("CLICK HERE OR [START] TO BEGIN", True, (255, 255, 255))
+        if txt.get_width() > bw - 20:
+            txt = self.font_bold.render("CLICK TO START", True, (255, 255, 255))
         self.screen.blit(txt, (bx + (bw - txt.get_width()) // 2, by + (bh - txt.get_height()) // 2))
 
     def _render_battlefield(self, state: GameState) -> None:
@@ -1123,7 +1175,7 @@ class TankGameGUI:
                     self.screen.blit(lbl, (3, py + 3))
 
     def _render_combat_log(self, state: GameState) -> None:
-        """Renders a clean, readable 4-line match action log underneath the battlefield."""
+        """Renders a clean, readable match action log underneath the battlefield."""
         log_x = 0
         log_y = self.board_h
         log_w = self.board_w
@@ -1139,7 +1191,8 @@ class TankGameGUI:
         self.screen.blit(hdr_title, (log_x + 14, log_y + 8))
 
         line_y = log_y + 28
-        for item in self.combat_logs[-4:]:
+        max_lines = max(1, min(6, (log_h - 32) // 20))
+        for item in self.combat_logs[-max_lines:]:
             line_surf = self.font.render(item["text"], True, item["color"])
             self.screen.blit(line_surf, (log_x + 14, line_y))
             line_y += 20
@@ -1896,8 +1949,12 @@ class TankGameGUI:
                 break
 
         # Row 1: Action buttons
-        for btn in self.buttons:
+        w_btn = (width - 20) // 5
+        offsets = [0, w_btn + 13, 2 * w_btn + 16, 3 * w_btn + 19, 4 * w_btn + 22]
+        for idx, btn in enumerate(self.buttons):
             r = btn["rect"]
+            if idx < len(offsets):
+                r.left = x + offsets[idx]
             r.top = y
             is_hover = r.collidepoint(mx, my)
             is_start = btn["id"] == "play_pause"
@@ -1923,8 +1980,10 @@ class TankGameGUI:
         y += 36
 
         # Row 2: Speed buttons
-        for sbtn in self.speed_buttons:
+        sw_btn = (width - 18) // 4
+        for idx, sbtn in enumerate(self.speed_buttons):
             r = sbtn["rect"]
+            r.left = x + idx * (sw_btn + 6)
             r.top = y
             is_active = (self.speed_multiplier == sbtn["val"])
             is_hover = r.collidepoint(mx, my)
@@ -2285,7 +2344,7 @@ class TankGameGUI:
         tint.fill((10, 14, 22, 175))
         self.screen.blit(tint, (0, 0))
 
-        card_w = 380
+        card_w = min(380, max(240, b_w - 30))
         card_h = 160
         cx = (b_w - card_w) // 2
         cy = (b_h - card_h) // 2

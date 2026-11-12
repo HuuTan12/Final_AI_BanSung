@@ -144,6 +144,7 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
             gui.reset_match_wait_state()
+            gui.update_map_layout(state.width, state.height)
             gui.add_combat_log(f"[MAP] Switched to {display_name.upper()}. Click START to begin.", (245, 190, 35))
             print(f"[Control] Cycled to Map: {display_name.upper()} (Waiting for START)")
             gui.render(state, agent0, agent1)
@@ -163,6 +164,7 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
             gui.reset_match_wait_state()
+            gui.update_map_layout(state.width, state.height)
             gui.add_combat_log("[RESET] Match reset to initial positions. Click START to begin.", (245, 190, 35))
             print(f"[Control] Match reset to initial state on map {display_name.upper()} (Waiting for START).")
             gui.render(state, agent0, agent1)
@@ -177,6 +179,7 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             if len(state_history) > 1:
                 state_history.pop()
                 state = state_history[-1].clone()
+                gui.update_map_layout(state.width, state.height)
                 print(f"[Control] Undo step: Restored to Cycle {state.game_cycle}, P{state.current_player} turn.")
             else:
                 print("[Control] Undo ignored: Already at initial state.")
