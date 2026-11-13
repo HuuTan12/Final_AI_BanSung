@@ -1,34 +1,16 @@
-"""
-benchmark_tanks.py - Comprehensive Benchmark for Task 2 (4 AI Configurations)
-Course: Introduction to Artificial Intelligence (503043)
-Author: Student Group
-Description:
-    Conducts comparative experiments for the 4 required search configurations (Req 2 - 1.5 pt):
-    1. Minimax Search
-    2. Alpha-Beta Search
-    3. Heuristic Minimax Search
-    4. Heuristic Minimax Search with Alpha-Beta Pruning
-    Evaluates execution time, explored game states, search depth, and match performance.
-    Exports Markdown / LaTeX tables and comparison plots.
-"""
-
 import time
 import os
 import sys
 
-# Ensure UTF-8 output across Windows, macOS, and Linux
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-# Add parent source directory to sys.path
-source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if source_dir not in sys.path:
-    sys.path.insert(0, source_dir)
-
-from typing import List, Dict, Any, Tuple, Optional
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if root not in sys.path:
+    sys.path.insert(0, root)
 
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.maps import MapBuilder
@@ -39,225 +21,212 @@ from task2_tank.agents.heuristic_minimax_agent import HeuristicMinimaxAgent
 from task2_tank.agents.heuristic_alphabeta_agent import HeuristicAlphaBetaAgent
 
 import matplotlib
-matplotlib.use("Agg")  # Safe for headless execution
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
 class TankTournament:
-    """
-    Automated benchmark suite for adversarial search algorithms in Tank Battle.
-    """
 
-    def __init__(self, max_cycles_per_game: int = 40):
+    def __init__(self, max_cycles_per_game = 40):
         self.max_cycles = max_cycles_per_game
-        self.single_move_results: List[Dict[str, Any]] = []
-        self.match_results: List[Dict[str, Any]] = []
+        self.single_move_results = []
+        self.match_results = []
 
-    def run_single_move_benchmark(self, depths: List[int] = None) -> List[Dict[str, Any]]:
-        """
-        Evaluates the 4 configurations on identical game scenarios across varying depths.
-        Measures exact computation time and explored game states (nodes).
-        """
+    def run_single_move_benchmark(self, depths=None):
         if depths is None:
             depths = [1, 2, 3]
 
-        print("=== 1. RUNNING SINGLE-MOVE SEARCH BENCHMARK ===")
+        print("1. RUNNING SINGLE-MOVE SEARCH BENCHMARK")
         self.single_move_results = []
         state = MapBuilder.create_standard_map()
 
         for d in depths:
-            agents = [
-                ("1. Minimax Search", MinimaxAgent(depth=d)),
-                ("2. Alpha-Beta Search", AlphaBetaAgent(depth=d)),
-                ("3. Heuristic Minimax", HeuristicMinimaxAgent(depth=d)),
-                ("4. Heuristic Alpha-Beta", HeuristicAlphaBetaAgent(depth=d)),
+            agent_list = [
+                ("1. Minimax Search", MinimaxAgent(depth = d)),
+                ("2. Alpha-Beta Search", AlphaBetaAgent(depth = d)),
+                ("3. Heuristic Minimax", HeuristicMinimaxAgent(depth = d)),
+                ("4. Heuristic Alpha-Beta", HeuristicAlphaBetaAgent(depth = d)),
             ]
 
-            for label, agent in agents:
-                # Run 3 trials to obtain reliable average runtime
-                times = []
-                nodes = []
-                prunes = []
+            for name, ag in agent_list:
+                t_list = []
+                n_list = []
+                p_list = []
 
-                for _ in range(3):
-                    action = agent.choose_action(state, player_id=0)
-                    times.append(agent.stats.execution_time)
-                    nodes.append(agent.stats.explored_nodes)
-                    prunes.append(agent.stats.prune_count)
+                for k in range(3):
+                    act = ag.choose_action(state, player_id = 0)
+                    t_list.append(ag.stats.execution_time)
+                    n_list.append(ag.stats.explored_nodes)
+                    p_list.append(ag.stats.prune_count)
 
-                avg_time = sum(times) / len(times)
-                avg_nodes = sum(nodes) / len(nodes)
-                avg_prunes = sum(prunes) / len(prunes)
+                t_avg = sum(t_list) / len(t_list)
+                n_avg = sum(n_list) / len(n_list)
+                p_avg = sum(p_list) / len(p_list)
 
-                entry = {
-                    "depth": d,
-                    "agent": label,
-                    "avg_time": avg_time,
-                    "avg_nodes": avg_nodes,
-                    "avg_prunes": avg_prunes,
-                    "action": action.value
-                }
-                self.single_move_results.append(entry)
-                print(f"-> [Depth {d}] {label:32s} | Time: {avg_time:8.5f}s | Nodes: {avg_nodes:6.0f} | Prunes: {avg_prunes:4.0f} | Move: {action.value}")
+                row = {}
+                row["depth"] = d
+                row["agent"] = name
+                row["avg_time"] = t_avg
+                row["avg_nodes"] = n_avg
+                row["avg_prunes"] = p_avg
+                row["action"] = act.value
+                self.single_move_results.append(row)
+
+                print(f"-> [Depth {d}] {name:32s} | Time: {t_avg:8.5f}s | Nodes: {n_avg:6.0f} | Prunes: {p_avg:4.0f} | Move: {act.value}")
 
         return self.single_move_results
 
-    def run_head_to_head_match(self, agent0, agent1, max_cycles: int = 40) -> Tuple[Optional[int], int, float, float]:
-        """
-        Runs a complete match between agent0 (Player 0) and agent1 (Player 1).
-        Returns: (winner_id, total_cycles, avg_time_p0, avg_time_p1).
-        """
+    def run_head_to_head_match(self, agent0, agent1, max_cycles = 40):
         state = MapBuilder.create_standard_map()
         state.max_cycles = max_cycles
 
-        times_p0 = []
-        times_p1 = []
+        t0 = []
+        t1 = []
 
         while not state.is_terminal():
-            current_pid = state.current_player
-            agent = agent0 if current_pid == 0 else agent1
-
-            action = agent.choose_action(state, current_pid)
-
-            if current_pid == 0:
-                times_p0.append(agent.stats.execution_time)
+            pid = state.current_player
+            if pid == 0:
+                ag = agent0
             else:
-                times_p1.append(agent.stats.execution_time)
+                ag = agent1
 
-            state = GameRules.apply_action(state, action)
+            act = ag.choose_action(state, pid)
+
+            if pid == 0:
+                t0.append(ag.stats.execution_time)
+            else:
+                t1.append(ag.stats.execution_time)
+
+            state = GameRules.apply_action(state, act)
 
         winner = state.get_winner()
-        avg_t0 = sum(times_p0) / max(1, len(times_p0))
-        avg_t1 = sum(times_p1) / max(1, len(times_p1))
-        return winner, state.game_cycle, avg_t0, avg_t1
+        avg0 = sum(t0) / max(1, len(t0))
+        avg1 = sum(t1) / max(1, len(t1))
+        return winner, state.game_cycle, avg0, avg1
 
-    def run_tournament(self) -> List[Dict[str, Any]]:
-        """
-        Executes round-robin matches between all pairs of AI configurations.
-        Both sides switch positions (P0/P1) to guarantee fair evaluation.
-        """
-        print("\n=== 2. RUNNING HEAD-TO-HEAD ROUND-ROBIN TOURNAMENT ===")
+    def run_tournament(self):
+        print("2. RUNNING HEAD-TO-HEAD ROUND-ROBIN TOURNAMENT")
         self.match_results = []
 
         configs = [
-            ("Minimax (d=2)", MinimaxAgent(depth=2)),
-            ("Alpha-Beta (d=2)", AlphaBetaAgent(depth=2)),
-            ("Heuristic Minimax (d=3)", HeuristicMinimaxAgent(depth=3)),
-            ("Heuristic Alpha-Beta (d=3)", HeuristicAlphaBetaAgent(depth=3)),
+            ("1. Minimax (d=2)", MinimaxAgent(depth = 2)),
+            ("2. Alpha-Beta (d=2)", AlphaBetaAgent(depth = 2)),
+            ("3. Heuristic Minimax (d=3)", HeuristicMinimaxAgent(depth = 3)),
+            ("4. Heuristic Alpha-Beta (d=3)", HeuristicAlphaBetaAgent(depth = 3)),
         ]
 
         for i in range(len(configs)):
             for j in range(i + 1, len(configs)):
-                name_a, agent_a = configs[i]
-                name_b, agent_b = configs[j]
+                name_a = configs[i][0]
+                agent_a = configs[i][1]
+                name_b = configs[j][0]
+                agent_b = configs[j][1]
 
-                # Match 1: A as P0, B as P1
-                winner1, cycles1, t0_1, t1_1 = self.run_head_to_head_match(agent_a, agent_b, self.max_cycles)
-                w_str1 = name_a if winner1 == 0 else (name_b if winner1 == 1 else "Draw")
+                win1, cyc1, a1, b1 = self.run_head_to_head_match(agent_a, agent_b, self.max_cycles)
+                if win1 == 0:
+                    ws1 = name_a
+                elif win1 == 1:
+                    ws1 = name_b
+                else:
+                    ws1 = "Draw"
 
-                # Match 2: B as P0, A as P1 (swapped sides)
-                winner2, cycles2, t0_2, t1_2 = self.run_head_to_head_match(agent_b, agent_a, self.max_cycles)
-                w_str2 = name_b if winner2 == 0 else (name_a if winner2 == 1 else "Draw")
+                win2, cyc2, a2, b2 = self.run_head_to_head_match(agent_b, agent_a, self.max_cycles)
+                if win2 == 0:
+                    ws2 = name_b
+                elif win2 == 1:
+                    ws2 = name_a
+                else:
+                    ws2 = "Draw"
 
-                entry1 = {"match": f"{name_a} vs {name_b}", "p0": name_a, "p1": name_b, "winner": w_str1, "cycles": cycles1}
-                entry2 = {"match": f"{name_b} vs {name_a}", "p0": name_b, "p1": name_a, "winner": w_str2, "cycles": cycles2}
-                self.match_results.extend([entry1, entry2])
+                m1 = {"match": f"{name_a} vs {name_b}", "p0": name_a, "p1": name_b, "winner": ws1, "cycles": cyc1}
+                m2 = {"match": f"{name_b} vs {name_a}", "p0": name_b, "p1": name_a, "winner": ws2, "cycles": cyc2}
+                self.match_results.append(m1)
+                self.match_results.append(m2)
 
-                print(f"-> Match 1: {name_a} (P0) vs {name_b} (P1) -> Winner: {w_str1} ({cycles1} cycles)")
-                print(f"-> Match 2: {name_b} (P0) vs {name_a} (P1) -> Winner: {w_str2} ({cycles2} cycles)")
+                print(f"-> Match 1: {name_a} (P0) vs {name_b} (P1) -> Winner: {ws1} ({cyc1} cycles)")
+                print(f"-> Match 2: {name_b} (P0) vs {name_a} (P1) -> Winner: {ws2} ({cyc2} cycles)")
 
         return self.match_results
 
-    def plot_comparisons(self, save_path: str = "benchmark_task2.png") -> str:
-        """
-        Generates comparison plots for the 4 search configurations.
-        """
-        if not self.single_move_results:
+    def plot_comparisons(self, save_path="benchmark_task2.png"):
+        if len(self.single_move_results) == 0:
             print("[Warning] No single-move benchmark data available to plot.")
             return ""
 
         if not os.path.isabs(save_path):
-            task2_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            save_path = os.path.join(task2_dir, save_path)
+            folder = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            save_path = os.path.join(folder, save_path)
 
         fig, axs = plt.subplots(1, 2, figsize=(14, 5))
-        plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
+        if "seaborn-v0_8-whitegrid" in plt.style.available:
+            plt.style.use("seaborn-v0_8-whitegrid")
+        else:
+            plt.style.use("default")
 
-        agents_labels = list(dict.fromkeys(r["agent"] for r in self.single_move_results))
-        depths = list(dict.fromkeys(r["depth"] for r in self.single_move_results))
+        names = []
+        for r in self.single_move_results:
+            if r["agent"] not in names:
+                names.append(r["agent"])
 
         colors = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"]
         markers = ["o", "s", "^", "D"]
 
-        # Subplot 1: Explored nodes vs Depth
-        for idx, agent_label in enumerate(agents_labels):
-            data = [r for r in self.single_move_results if r["agent"] == agent_label]
-            axs[0].plot(
-                [r["depth"] for r in data],
-                [r["avg_nodes"] for r in data],
-                marker=markers[idx],
-                color=colors[idx],
-                linewidth=2,
-                label=agent_label
-            )
-        axs[0].set_title("Explored States (Nodes) vs Search Depth", fontsize=12, fontweight="bold")
+        for k in range(len(names)):
+            xs = []
+            ys = []
+            for r in self.single_move_results:
+                if r["agent"] == names[k]:
+                    xs.append(r["depth"])
+                    ys.append(r["avg_nodes"])
+            axs[0].plot(xs, ys, marker = markers[k], color = colors[k], linewidth = 2, label = names[k])
+        axs[0].set_title("Explored States (Nodes) vs Search Depth", fontsize = 12, fontweight = "bold")
         axs[0].set_xlabel("Search Depth")
         axs[0].set_ylabel("Explored States (Nodes)")
         axs[0].set_yscale("log")
-        axs[0].grid(True, linestyle="--", alpha=0.6)
+        axs[0].grid(True, linestyle ="--", alpha = 0.6)
         axs[0].legend()
 
-        # Subplot 2: Execution time vs Depth
-        for idx, agent_label in enumerate(agents_labels):
-            data = [r for r in self.single_move_results if r["agent"] == agent_label]
-            axs[1].plot(
-                [r["depth"] for r in data],
-                [r["avg_time"] for r in data],
-                marker=markers[idx],
-                color=colors[idx],
-                linewidth=2,
-                label=agent_label
-            )
-        axs[1].set_title("Average Execution Time (Seconds) vs Depth", fontsize=12, fontweight="bold")
+        for k in range(len(names)):
+            xs = []
+            ys = []
+            for r in self.single_move_results:
+                if r["agent"] == names[k]:
+                    xs.append(r["depth"])
+                    ys.append(r["avg_time"])
+            axs[1].plot(xs, ys, marker = markers[k], color = colors[k], linewidth = 2, label = names[k])
+        axs[1].set_title("Average Execution Time (Seconds) vs Depth", fontsize = 12, fontweight = "bold")
         axs[1].set_xlabel("Search Depth")
         axs[1].set_ylabel("Execution Time (s)")
-        axs[1].grid(True, linestyle="--", alpha=0.6)
+        axs[1].grid(True, linestyle = "--", alpha = 0.6)
         axs[1].legend()
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi = 300)
         plt.close()
         print(f"\n[Visual] Benchmark comparison plot saved to: {os.path.abspath(save_path)}")
         return os.path.abspath(save_path)
 
-    def export_tables(self) -> str:
-        """
-        Exports Markdown / LaTeX tables for the IEEE report.
-        """
-        md = []
-        md.append("### Table 1: Search Performance Comparison Across 4 Configurations (Task 2 - Req 2)\n")
-        md.append("| Depth | Algorithm Configuration | Explored Nodes | Prune Count | Execution Time (s) | Chosen Action |")
-        md.append("|:---:|:---|:---:|:---:|:---:|:---:|")
+    def export_tables(self):
+        lines = []
+        lines.append("Table 1: Search Performance Comparison Across 4 Configurations (Task 2 - Req 2)\n")
+        lines.append("| Depth | Algorithm Configuration | Explored Nodes | Prune Count | Execution Time (s) | Chosen Action |")
+        lines.append("|:---:|:---|:---:|:---:|:---:|:---:|")
         for r in self.single_move_results:
-            md.append(f"| {r['depth']} | {r['agent']} | {r['avg_nodes']:.0f} | {r['avg_prunes']:.0f} | {r['avg_time']:.5f} | `{r['action']}` |")
+            lines.append(f"| {r['depth']} | {r['agent']} | {r['avg_nodes']:.0f} | {r['avg_prunes']:.0f} | {r['avg_time']:.5f} | `{r['action']}` |")
 
-        md.append("\n### Table 2: Head-to-Head Tournament Results\n")
-        md.append("| Match Scenario | Player 0 (MAX) | Player 1 (MIN) | Winner | Game Cycles |")
-        md.append("|:---|:---|:---|:---|:---:|")
+        lines.append("\nTable 2: Head-to-Head Tournament Results\n")
+        lines.append("| Match Scenario | Player 0 (MAX) | Player 1 (MIN) | Winner | Game Cycles |")
+        lines.append("|:---|:---|:---|:---|:---:|")
         for r in self.match_results:
-            md.append(f"| {r['match']} | {r['p0']} | {r['p1']} | **{r['winner']}** | {r['cycles']} |")
+            lines.append(f"| {r['match']} | {r['p0']} | {r['p1']} | **{r['winner']}** | {r['cycles']} |")
 
-        return "\n".join(md)
+        return "\n".join(lines)
 
-
-# Compatibility alias
 TankBenchmarkRunner = TankTournament
 
-
 if __name__ == "__main__":
-    benchmark = TankTournament(max_cycles_per_game=25)
-    benchmark.run_single_move_benchmark(depths=[1, 2, 3])
-    benchmark.run_tournament()
-    benchmark.plot_comparisons("benchmark_task2.png")
-    print("\n" + benchmark.export_tables())
-
+    bm = TankTournament(max_cycles_per_game = 25)
+    bm.run_single_move_benchmark(depths=[1, 2, 3])
+    bm.run_tournament()
+    bm.plot_comparisons("benchmark_task2.png")
+    print("\n" + bm.export_tables())

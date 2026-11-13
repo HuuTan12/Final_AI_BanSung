@@ -1,30 +1,14 @@
-"""
-backtracking_solver.py - Step-by-Step Backtracking Solver with Generator Support
-Course: Introduction to Artificial Intelligence (503043)
-Author: Student Group
-Description:
-    Implements a full-featured Backtracking Search for the N-Queens problem.
-    Supports:
-    1. Single solution search (stop at first valid assignment).
-    2. All-solutions enumeration (finding all valid configurations, e.g., 92 for N=8).
-    3. Step-by-step generator yielding rich events (TRY, SAFE, CONFLICT, BACKTRACK, SOLUTION)
-       for interactive graphical visualization and metric telemetry.
-"""
-
 import time
 import os
 import sys
-from typing import List, Optional, Tuple, Generator, Dict, Any
-from dataclasses import dataclass
 
-# Ensure source directory is in sys.path
-_file_dir = os.path.dirname(os.path.abspath(__file__))
-_source_dir = os.path.abspath(os.path.join(_file_dir, "..", ".."))
-if _source_dir not in sys.path:
-    sys.path.insert(0, _source_dir)
-_task1_dir = os.path.abspath(os.path.join(_file_dir, ".."))
-if _task1_dir not in sys.path:
-    sys.path.insert(0, _task1_dir)
+file_dir = os.path.dirname(os.path.abspath(__file__))
+source_dir = os.path.abspath(os.path.join(file_dir, "..", ".."))
+if source_dir not in sys.path:
+    sys.path.insert(0, source_dir)
+task1_dir = os.path.abspath(os.path.join(file_dir, ".."))
+if task1_dir not in sys.path:
+    sys.path.insert(0, task1_dir)
 
 try:
     from task1_nqueens.solvers.base_solver import BaseSolver, SolverResult
@@ -34,8 +18,7 @@ except ImportError:
     from core.problem import NQueensProblem
 
 
-# Reference known counts of distinct valid solutions for N-Queens (OEIS A000170)
-KNOWN_SOLUTIONS_COUNT: Dict[int, int] = {
+KNOWN_SOLUTIONS_COUNT = {
     4: 2,
     5: 10,
     6: 4,
@@ -52,117 +35,121 @@ KNOWN_SOLUTIONS_COUNT: Dict[int, int] = {
 }
 
 
-@dataclass
 class BacktrackStep:
-    """
-    Data payload for an individual step in the backtracking search.
-    Used by graphical visualizers to animate placement and display live metrics.
-    """
-    event_type: str            # "TRY", "SAFE", "CONFLICT", "BACKTRACK", "SOLUTION", "FINISHED"
-    col: int                   # Current column being inspected [0..N-1]
-    row: int                   # Current row candidate [0..N-1]
-    board: List[int]           # Current queen assignments (board[col] = row, or -1 if unplaced)
-    cases_explored: int        # Cumulative number of candidate cell checks
-    solutions_found: int       # Total number of complete valid solutions found so far
-    backtracks_count: int      # Cumulative number of backtrack operations
-    conflicts: List[Tuple[int, int]]  # Coordinates of attacking queens causing conflict
-    message: str               # Human-readable description for UI status bar
+
+    def __init__(self, event_type, col, row, board, cases_explored,
+                 solutions_found, backtracks_count, conflicts, message):
+        self.event_type = event_type
+        self.col = col
+        self.row = row
+        self.board = board
+        self.cases_explored = cases_explored
+        self.solutions_found = solutions_found
+        self.backtracks_count = backtracks_count
+        self.conflicts = conflicts
+        self.message = message
 
 
 class BacktrackingSolver(BaseSolver):
-    """
-    Depth-First Search (DFS) with Backtracking and Forward Checking
-    for the N-Queens problem.
-    """
 
-    def __init__(self, find_all: bool = False, max_cases: Optional[int] = None):
-        name = "Backtracking-AllSolutions" if find_all else "Backtracking-FirstSolution"
-        super().__init__(name=name)
+    def __init__(self, find_all = False, max_cases = None):
+        if find_all == True:
+            name = "Backtracking-AllSolutions"
+        else:
+            name = "Backtracking-FirstSolution"
+        super().__init__(name = name)
         self.find_all = find_all
         self.max_cases = max_cases
 
-    def solve(self, n: int) -> SolverResult:
-        """
-        Executes standard non-visual backtracking search and returns SolverResult.
-        """
+    def get_known_total(self, n):
+        if n in KNOWN_SOLUTIONS_COUNT:
+            return KNOWN_SOLUTIONS_COUNT[n]
+        else:
+            return "?"
+
+    def solve(self, n):
         problem = NQueensProblem(n)
         start_time = time.perf_counter()
 
         board = [-1] * n
-        solutions: List[List[int]] = []
-        cases_count = 0
-        backtracks_count = 0
+        solutions = []
+        count = {"cases": 0, "backtracks": 0}
 
-        # Frequency bitmasks / sets for fast diagonal and row attack checks
         rows_used = [False] * n
-        diag1_used = [False] * (2 * n)  # r - c + n - 1
-        diag2_used = [False] * (2 * n)  # r + c
+        diag1_used = [False] * (2 * n)
+        diag2_used = [False] * (2 * n)
 
-        def search(col: int) -> bool:
-            nonlocal cases_count, backtracks_count
-
+        def search(col):
             if col == n:
                 solutions.append(list(board))
-                return not self.find_all  # return True to stop if find_all is False
+                if self.find_all == True:
+                    return False
+                else:
+                    return True
 
             for r in range(n):
-                cases_count += 1
+                count["cases"] = count["cases"] + 1
                 d1 = r - col + n - 1
                 d2 = r + col
 
-                if not rows_used[r] and not diag1_used[d1] and not diag2_used[d2]:
-                    # Place queen
+                if rows_used[r] == False and diag1_used[d1] == False and diag2_used[d2] == False:
                     board[col] = r
                     rows_used[r] = True
                     diag1_used[d1] = True
                     diag2_used[d2] = True
 
-                    # Recurse
-                    if search(col + 1):
+                    found = search(col + 1)
+                    if found == True:
                         return True
 
-                    # Backtrack
                     board[col] = -1
                     rows_used[r] = False
                     diag1_used[d1] = False
                     diag2_used[d2] = False
-                    backtracks_count += 1
+                    count["backtracks"] = count["backtracks"] + 1
 
             return False
 
         search(0)
-        elapsed_time = time.perf_counter() - start_time
-        solved = len(solutions) > 0
-        first_solution = solutions[0] if solved else None
 
-        return SolverResult(
-            solver_name=self.name,
-            n=n,
-            is_solved=solved,
-            solution=first_solution,
-            execution_time=elapsed_time,
-            steps_taken=cases_count,
-            restarts=backtracks_count
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+
+        if len(solutions) > 0:
+            solved = True
+            first_solution = solutions[0]
+        else:
+            solved = False
+            first_solution = None
+
+        result = SolverResult(
+            solver_name = self.name,
+            n = n,
+            is_solved = solved,
+            solution = first_solution,
+            execution_time = elapsed_time,
+            steps_taken = count["cases"],
+            restarts = count["backtracks"]
         )
+        return result
 
-    def find_all_solutions(self, n: int) -> List[List[int]]:
-        """
-        Enumerates all valid solution assignments for an N x N board.
-        """
+    def find_all_solutions(self, n):
         board = [-1] * n
-        solutions: List[List[int]] = []
+        solutions = []
         rows_used = [False] * n
         diag1_used = [False] * (2 * n)
         diag2_used = [False] * (2 * n)
 
-        def search(col: int):
+        def search(col):
             if col == n:
                 solutions.append(list(board))
                 return
+
             for r in range(n):
                 d1 = r - col + n - 1
                 d2 = r + col
-                if not rows_used[r] and not diag1_used[d1] and not diag2_used[d2]:
+
+                if rows_used[r] == False and diag1_used[d1] == False and diag2_used[d2] == False:
                     board[col] = r
                     rows_used[r] = True
                     diag1_used[d1] = True
@@ -178,134 +165,126 @@ class BacktrackingSolver(BaseSolver):
         search(0)
         return solutions
 
-    def solve_step_generator(
-        self,
-        n: int,
-        find_all: bool = False,
-        yield_conflicts: bool = True
-    ) -> Generator[BacktrackStep, None, None]:
-        """
-        Step-by-step generator for UI animation.
-        Yields BacktrackStep events for each placement trial, conflict, backtrack, and solution.
-        """
+    def solve_step_generator(self, n, find_all = False, yield_conflicts = True):
         board = [-1] * n
-        cases_count = 0
-        solutions_count = 0
-        backtracks_count = 0
+        stats = {"cases": 0, "solutions": 0, "backtracks": 0}
 
-        # Initial empty board step
         yield BacktrackStep(
-            event_type="INIT",
-            col=0,
-            row=0,
-            board=list(board),
-            cases_explored=0,
-            solutions_found=0,
-            backtracks_count=0,
-            conflicts=[],
-            message=f"Initialized empty {n}x{n} chessboard. Commencing DFS backtracking search..."
+            event_type = "INIT",
+            col = 0,
+            row = 0,
+            board = list(board),
+            cases_explored = 0,
+            solutions_found = 0,
+            backtracks_count = 0,
+            conflicts = [],
+            message = f"Initialized empty {n}x{n} chessboard. Commencing DFS backtracking search..."
         )
 
-        def backtrack(col: int) -> Generator[BacktrackStep, None, bool]:
-            nonlocal cases_count, solutions_count, backtracks_count
-
+        def backtrack(col):
             if col == n:
-                solutions_count += 1
-                known_total = KNOWN_SOLUTIONS_COUNT.get(n, "?")
-                msg = (f"Solution #{solutions_count} found! "
-                       f"({solutions_count}/{known_total} configurations solved)")
+                stats["solutions"] = stats["solutions"] + 1
+                known_total = self.get_known_total(n)
+                msg = f"Solution #{stats['solutions']} found! ({stats['solutions']}/{known_total} configurations solved)"
                 yield BacktrackStep(
-                    event_type="SOLUTION",
-                    col=col - 1,
-                    row=board[col - 1],
-                    board=list(board),
-                    cases_explored=cases_count,
-                    solutions_found=solutions_count,
-                    backtracks_count=backtracks_count,
-                    conflicts=[],
-                    message=msg
+                    event_type = "SOLUTION",
+                    col = col - 1,
+                    row = board[col - 1],
+                    board = list(board),
+                    cases_explored = stats["cases"],
+                    solutions_found = stats["solutions"],
+                    backtracks_count = stats["backtracks"],
+                    conflicts = [],
+                    message = msg
                 )
-                return not find_all
+                if find_all == True:
+                    return False
+                else:
+                    return True
 
             for r in range(n):
-                cases_count += 1
-                # Check conflicts with previously placed queens
-                conflicts: List[Tuple[int, int]] = []
+                stats["cases"] = stats["cases"] + 1
+
+                conflicts = []
                 for prev_col in range(col):
                     prev_row = board[prev_col]
                     if prev_row == r or abs(prev_row - r) == abs(prev_col - col):
                         conflicts.append((prev_row, prev_col))
 
-                if conflicts:
-                    if yield_conflicts:
-                        c_info = ", ".join([f"({cr},{cc})" for cr, cc in conflicts[:2]])
+                if len(conflicts) > 0:
+                    if yield_conflicts == True:
+                        limit = len(conflicts)
+                        if limit > 2:
+                            limit = 2
+                        c_info = ""
+                        for k in range(limit):
+                            if k > 0:
+                                c_info = c_info + ", "
+                            c_info = c_info + "(" + str(conflicts[k][0]) + "," + str(conflicts[k][1]) + ")"
+
                         yield BacktrackStep(
-                            event_type="CONFLICT",
-                            col=col,
-                            row=r,
-                            board=list(board),
-                            cases_explored=cases_count,
-                            solutions_found=solutions_count,
-                            backtracks_count=backtracks_count,
-                            conflicts=conflicts,
-                            message=f"Square ({r}, {col}) invalid: Attacked by existing queen at {c_info}!"
+                            event_type = "CONFLICT",
+                            col = col,
+                            row = r,
+                            board = list(board),
+                            cases_explored = stats["cases"],
+                            solutions_found = stats["solutions"],
+                            backtracks_count = stats["backtracks"],
+                            conflicts = conflicts,
+                            message = f"Square ({r}, {col}) invalid: Attacked by existing queen at {c_info}!"
                         )
                 else:
-                    # Safe to place
                     board[col] = r
                     yield BacktrackStep(
-                        event_type="SAFE",
-                        col=col,
-                        row=r,
-                        board=list(board),
-                        cases_explored=cases_count,
-                        solutions_found=solutions_count,
-                        backtracks_count=backtracks_count,
-                        conflicts=[],
-                        message=f"Safely placed Queen at ({r}, {col}). Advancing to Column {col + 1}."
+                        event_type = "SAFE",
+                        col = col,
+                        row = r,
+                        board = list(board),
+                        cases_explored = stats["cases"],
+                        solutions_found = stats["solutions"],
+                        backtracks_count = stats["backtracks"],
+                        conflicts = [],
+                        message = f"Safely placed Queen at ({r}, {col}). Advancing to Column {col + 1}."
                     )
 
-                    # Recurse to next column
                     stop_search = False
                     for step in backtrack(col + 1):
                         yield step
-                        if step.event_type == "SOLUTION" and not find_all:
+                        if step.event_type == "SOLUTION" and find_all == False:
                             stop_search = True
                             break
 
-                    if stop_search:
+                    if stop_search == True:
                         return True
 
-                    # Backtrack: lift queen
                     board[col] = -1
-                    backtracks_count += 1
+                    stats["backtracks"] = stats["backtracks"] + 1
                     yield BacktrackStep(
-                        event_type="BACKTRACK",
-                        col=col,
-                        row=r,
-                        board=list(board),
-                        cases_explored=cases_count,
-                        solutions_found=solutions_count,
-                        backtracks_count=backtracks_count,
-                        conflicts=[],
-                        message=f"Backtracking: Removed Queen at ({r}, {col}). Exploring next candidate..."
+                        event_type = "BACKTRACK",
+                        col = col,
+                        row = r,
+                        board = list(board),
+                        cases_explored = stats["cases"],
+                        solutions_found = stats["solutions"],
+                        backtracks_count = stats["backtracks"],
+                        conflicts = [],
+                        message = f"Backtracking: Removed Queen at ({r}, {col}). Exploring next candidate..."
                     )
 
             return False
 
-        # Run generator
         for step in backtrack(0):
             yield step
 
-        known_total = KNOWN_SOLUTIONS_COUNT.get(n, "?")
+        known_total = self.get_known_total(n)
         yield BacktrackStep(
-            event_type="FINISHED",
-            col=n - 1,
-            row=0,
-            board=list(board),
-            cases_explored=cases_count,
-            solutions_found=solutions_count,
-            backtracks_count=backtracks_count,
-            conflicts=[],
-            message=f"Search completed! Tested {cases_count} configurations, found {solutions_count}/{known_total} valid solutions."
+            event_type = "FINISHED",
+            col = n - 1,
+            row = 0,
+            board = list(board),
+            cases_explored = stats["cases"],
+            solutions_found = stats["solutions"],
+            backtracks_count = stats["backtracks"],
+            conflicts = [],
+            message = f"Search completed! Tested {stats['cases']} configurations, found {stats['solutions']}/{known_total} valid solutions."
         )
