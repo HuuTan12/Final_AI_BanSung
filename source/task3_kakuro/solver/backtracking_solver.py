@@ -1,10 +1,3 @@
-"""
-Module: backtracking_solver.py
-Mô tả: Bộ giải Kakuro CSP kết hợp Backtracking Search với Lan truyền ràng buộc (AC-3 / MAC)
-và các Heuristic (MRV, LCV).
-Thực hiện yêu cầu 2 (1.0 điểm) của Task 3.
-"""
-
 from typing import Optional, Dict
 import time
 from dataclasses import dataclass
@@ -24,120 +17,126 @@ class KakuroSolveResult:
 
 
 class KakuroBacktrackingSolver:
-    """
-    Bộ giải tìm kiếm quay lui kết hợp lan truyền ràng buộc cho Kakuro.
-    """
 
-    def __init__(
-        self, 
-        use_ac3: bool = True, 
-        use_mrv: bool = True, 
-        use_lcv: bool = True, 
-        tracer: SolverTracer = None,
-        timeout: Optional[float] = None,
-        arbitrary_var: bool = False
-    ):
+    def __init__(self, use_ac3: bool = True, use_mrv: bool = True, use_lcv: bool = True,
+                 tracer: SolverTracer = None, timeout: Optional[float] = None,
+                 arbitrary_var: bool = False):
         self.use_ac3 = use_ac3
         self.use_mrv = use_mrv
         self.use_lcv = use_lcv
         self.tracer = tracer
         self.timeout = timeout
         self.arbitrary_var = arbitrary_var
+
         self.propagator = ConstraintPropagator(tracer=tracer)
+
         self.nodes_explored = 0
         self.backtracks = 0
         self.start_time = 0.0
 
     def solve(self, csp: KakuroCSP) -> KakuroSolveResult:
-        """
-        Khởi chạy giải bài toán:
-        1. Đo thời gian bắt đầu.
-        2. Tiền xử lý Initial Filtering & AC-3 để thu hẹp domain tối đa trước khi duyệt.
-        3. Bắt đầu đệ quy _backtrack(csp).
-        4. Ghi nhận kết quả: thời gian, số nút đã duyệt, số lần backtrack.
-        """
         self.start_time = time.time()
         self.nodes_explored = 0
         self.backtracks = 0
-        # Bước 1: Lọc miền giá trị ban đầu (giao các tổ hợp của run ngang và run dọc)
-        if not self.propagator.initial_filtering(csp):
+
+        filtering_ok = self.propagator.initial_filtering(csp)
+
+        if not filtering_ok:
             exec_time = time.time() - self.start_time
             return KakuroSolveResult(False, exec_time, self.nodes_explored, self.backtracks, None)
-        # Bước 2: Nếu bật AC-3 thì chạy lan truyền ràng buộc toàn diện trước khi quay lui
+
         if self.use_ac3:
-            if not self.propagator.ac3(csp):
+            ac3_ok = self.propagator.ac3(csp)
+
+            if not ac3_ok:
                 exec_time = time.time() - self.start_time
                 return KakuroSolveResult(False, exec_time, self.nodes_explored, self.backtracks, None)
-        # Bước 3: Đệ quy tìm kiếm
+
         is_solved = self._backtrack(csp)
         exec_time = time.time() - self.start_time
-        solution_grid = csp.get_solution_grid() if is_solved else None
-        return KakuroSolveResult(
+
+        if is_solved:
+            solution_grid = csp.get_solution_grid()
+        else:
+            solution_grid = None
+
+        result = KakuroSolveResult(
             is_solved=is_solved,
             execution_time=exec_time,
             nodes_explored=self.nodes_explored,
             backtracks=self.backtracks,
             solution_grid=solution_grid
         )
+        return result
 
     def _backtrack(self, csp: KakuroCSP) -> bool:
-        """
-        Đệ quy quay lui (Backtracking Search):
-        1. Kiểm tra timeout (nếu có).
-        2. Kiểm tra điều kiện dừng: Nếu tất cả ô đã gán -> Thành công!
-        3. Chọn biến tiếp theo dùng Heuristic MRV (hoặc arbitrary nếu cấu hình).
-        4. Chọn thứ tự giá trị để thử dùng Heuristic LCV.
-        5. Với mỗi giá trị: Gán, kiểm tra tính hợp lệ, tỉa miền giá trị (Forward Checking).
-        """
-        if self.timeout is not None and (time.time() - self.start_time) > self.timeout:
-            return False
+        if self.timeout is not None:
+            elapsed = time.time() - self.start_time
 
-        # Điều kiện dừng: Nếu đã gán hết tất cả các ô
-        if all(cell.is_assigned for cell in csp.variables.values()):
+            if elapsed > self.timeout:
+                return False
+
+        all_assigned = True
+
+        for cell in csp.variables.values():
+            if not cell.is_assigned:
+                all_assigned = False
+                break
+
+        if all_assigned:
             return csp.is_solved()
 
-        # Chọn ô trắng tiếp theo bằng MRV (kết hợp Degree tie-breaker)
         var = CSPHeuristics.select_unassigned_variable(
-            csp, 
-            use_mrv=self.use_mrv, 
-            use_degree=True, 
+            csp,
+            use_mrv=self.use_mrv,
+            use_degree=True,
             arbitrary=self.arbitrary_var
         )
+
         if var is None:
             return False
 
-        # Sắp xếp các giá trị trong domain của ô theo thứ tự LCV
         ordered_values = CSPHeuristics.order_domain_values(csp, var, use_lcv=self.use_lcv)
 
         for val in ordered_values:
-            self.nodes_explored += 1
+            self.nodes_explored = self.nodes_explored + 1
 
-            # Gán thử giá trị
             var.assign(val)
-            if self.tracer:
-                self.tracer.emit(EventType.ASSIGN, cell_pos=var.pos, value=val, message=f"Assign {val} to {var.pos}")
 
-            # Kiểm tra xem các Run đi qua ô này có vi phạm không
-            runs_valid = all(run.is_partially_valid() for run in csp.cell_runs.get(var, []))
+            if self.tracer:
+                assign_message = 'Assign ' + str(val) + ' to ' + str(var.pos)
+                self.tracer.emit(EventType.ASSIGN, cell_pos=var.pos, value=val, message=assign_message)
+
+            if var in csp.cell_runs:
+                runs_of_var = csp.cell_runs[var]
+            else:
+                runs_of_var = []
+
+            runs_valid = True
+
+            for run in runs_of_var:
+                if not run.is_partially_valid():
+                    runs_valid = False
+                    break
 
             if runs_valid:
-                # Tỉa nhánh miền giá trị các ô láng giềng (Forward Checking)
                 pruned = self.propagator.forward_check(csp, var, val)
 
-                # Nếu không bị bế tắc (Domain Wipeout)
                 if pruned is not None:
-                    # Gọi đệ quy đi tiếp
-                    if self._backtrack(csp):
+                    found_solution = self._backtrack(csp)
+
+                    if found_solution:
                         return True
 
-                    # Hoàn tác lại miền giá trị đã bị tỉa khi quay lui
-                    for neighbor, removed_vals in pruned.items():
+                    for neighbor in pruned:
+                        removed_vals = pruned[neighbor]
                         neighbor.domain.update(removed_vals)
 
-            # Nếu nhánh này thất bại -> Hoàn tác phép gán (BACKTRACK)
             var.unassign()
-            self.backtracks += 1
+            self.backtracks = self.backtracks + 1
+
             if self.tracer:
-                self.tracer.emit(EventType.BACKTRACK, cell_pos=var.pos, value=val, message=f"Backtrack from {var.pos}")
+                backtrack_message = 'Backtrack from ' + str(var.pos)
+                self.tracer.emit(EventType.BACKTRACK, cell_pos=var.pos, value=val, message=backtrack_message)
 
         return False

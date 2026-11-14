@@ -79,8 +79,8 @@ package "task3_kakuro.solver" {
     }
 
     class CSPHeuristics {
-        + {static} select_unassigned_variable_mrv(csp: KakuroCSP) : Cell
-        + {static} order_domain_values_lcv(csp: KakuroCSP, var: Cell) : List[int]
+        + {static} select_unassigned_variable(csp: KakuroCSP, use_mrv: bool, use_degree: bool, arbitrary: bool) : Optional[Cell]
+        + {static} order_domain_values(csp: KakuroCSP, var: Cell, use_lcv: bool) : List[int]
     }
 
     class KakuroSolveResult <<dataclass>> {

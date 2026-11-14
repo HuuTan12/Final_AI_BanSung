@@ -64,8 +64,8 @@ classDiagram
   }
 
   class CSPHeuristics {
-    +select_unassigned_variable_mrv(csp)$ Cell
-    +order_domain_values_lcv(csp, var)$ list
+    +select_unassigned_variable(csp, use_mrv, use_degree, arbitrary)$ Cell
+    +order_domain_values(csp, var, use_lcv)$ list
   }
 
   class KakuroBacktrackingSolver {
