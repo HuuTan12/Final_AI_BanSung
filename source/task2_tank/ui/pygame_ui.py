@@ -1805,21 +1805,25 @@ class TankGameGUI:
             self.screen.blit(reac_val, (x + 18, cy + 24))
             rank_badge = self.font_badge.render(speed_rank, True, (255, 255, 255))
             rb_w = rank_badge.get_width() + 8
-            rb_rect = pygame.Rect(x + 105, cy + 25, rb_w, 16)
+            badge_x = x + 18 + reac_val.get_width() + 8
+            rb_rect = pygame.Rect(badge_x, cy + 25, rb_w, 16)
             pygame.draw.rect(self.screen, rank_col, rb_rect, border_radius = 3)
             self.screen.blit(rank_badge, (rb_rect.x + 4, rb_rect.y + 1))
+            div_x = max(badge_x + rb_w + 10, x + 146)
+            pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (div_x, cy + 8), (div_x, cy + 44), 1)
+            info_x = div_x + 10
             if both_humans:
                 if pid == 0:
-                    k_desc = 'P0: [WASD] move, [F/SPACE] fire, [Q] stay'
+                    k_desc = 'P0: [WASD] Move | [SPACE] Fire | [Q] Stay'
                 else:
-                    k_desc = 'P1: [Arrows] move, [/] fire, [.] stay'
+                    k_desc = 'P1: [Arrows] Move | [/] Fire | [.] Stay'
             else:
-                k_desc = '[WASD / Click Map] Move | [SPACE / R-Click] Fire'
+                k_desc = '[WASD / Arrows] Move | [SPACE / F] Fire'
             kd_surf = self.font_bold.render(k_desc, True, (245, 248, 255))
-            self.screen.blit(kd_surf, (x + 185, cy + 7))
-            tip_str = f'Stats: {moves_cnt} moves, {shots_cnt} shots | Hold key to drive continuously!'
+            self.screen.blit(kd_surf, (info_x, cy + 7))
+            tip_str = f'Stats: {moves_cnt} moves, {shots_cnt} shots | Hold to drive'
             tip_surf = self.font_small.render(tip_str, True, self.COLOR_GOLD)
-            self.screen.blit(tip_surf, (x + 185, cy + 26))
+            self.screen.blit(tip_surf, (info_x, cy + 26))
         else:
             stats = agent.stats if agent else None
             d_val = stats.search_depth if stats and stats.search_depth > 0 else 1 if sel_key == 'greedy' else cur_depth
