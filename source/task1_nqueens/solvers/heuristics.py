@@ -61,14 +61,18 @@ class MaxConflictSelector(VariableSelector):
         if not conflicted_vars:
             raise ValueError("Conflicted variables list is empty.")
 
-        def get_conf(var: int) -> int:
-            if len(conflict_counts) > var:
-                return conflict_counts[var]
-            idx = conflicted_vars.index(var)
-            return conflict_counts[idx]
+        # Tim gia tri xung dot lon nhat trong so cac bien bi xung dot
+        max_conf = -1
+        for var in conflicted_vars:
+            conf = conflict_counts[var] if var < len(conflict_counts) else 0
+            if conf > max_conf:
+                max_conf = conf
 
-        max_conf = max(get_conf(var) for var in conflicted_vars)
-        candidates = [var for var in conflicted_vars if get_conf(var) == max_conf]
+        # Lay danh sach tat ca cac cot co cung so xung dot cao nhat
+        candidates = [
+            var for var in conflicted_vars
+            if (conflict_counts[var] if var < len(conflict_counts) else 0) == max_conf
+        ]
         return random.choice(candidates)
 
 
@@ -79,7 +83,7 @@ class HybridTabuSelector(VariableSelector):
     and a short-term tabu list (Tabu Search, Lecture 08 - Slide 31) to escape local plateaux.
     """
 
-    def __init__(self, epsilon: float = 0.1, tabu_size: int = 5):
+    def __init__(self, epsilon: float = 0.1, tabu_size: int = 4):
         self.epsilon = epsilon
         self.tabu_size = tabu_size
         self.tabu_list: deque = deque(maxlen=tabu_size)
@@ -91,24 +95,31 @@ class HybridTabuSelector(VariableSelector):
         if not conflicted_vars:
             raise ValueError("Conflicted variables list is empty.")
 
-        # Epsilon-greedy: random exploration step to escape plateaux
+        # Epsilon-greedy: buoc ngau nhien de thoat khoi cao nguyen (plateau)
         if random.random() < self.epsilon:
             chosen = random.choice(conflicted_vars)
             self.tabu_list.append(chosen)
             return chosen
 
-        # Filter out variables currently in tabu list
-        non_tabu = [v for v in conflicted_vars if v not in self.tabu_list]
+        # Gioi han do dai tabu khong duoc vuot qua so bien xung dot tru 1
+        effective_limit = max(1, len(conflicted_vars) - 1)
+        recent_tabu = list(self.tabu_list)[-effective_limit:] if len(self.tabu_list) >= len(conflicted_vars) else list(self.tabu_list)
+
+        # Loc cac bien chua bi tabu
+        non_tabu = [v for v in conflicted_vars if v not in recent_tabu]
         candidates = non_tabu if non_tabu else conflicted_vars
 
-        def get_conf(var: int) -> int:
-            if len(conflict_counts) > var:
-                return conflict_counts[var]
-            idx = conflicted_vars.index(var)
-            return conflict_counts[idx]
+        # Chon bien co so xung dot lon nhat trong tap ung vien
+        max_conf = -1
+        for var in candidates:
+            conf = conflict_counts[var] if var < len(conflict_counts) else 0
+            if conf > max_conf:
+                max_conf = conf
 
-        max_conf = max(get_conf(var) for var in candidates)
-        best_candidates = [var for var in candidates if get_conf(var) == max_conf]
+        best_candidates = [
+            var for var in candidates
+            if (conflict_counts[var] if var < len(conflict_counts) else 0) == max_conf
+        ]
         chosen = random.choice(best_candidates)
         self.tabu_list.append(chosen)
         return chosen

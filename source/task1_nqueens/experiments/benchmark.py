@@ -299,12 +299,24 @@ class BenchmarkRunner:
 
         return "\n".join(md)
 
+    def run_all(self) -> str:
+        """
+        Chay toan bo thuc nghiem Task 1 theo yeu cau cua de:
+        1. Chay Glucose3 SAT Solver voi cac gia tri N tang dan (N >= 4).
+        2. Chay Min-Conflicts voi cac chien luoc chon bien (Random vs Heuristic).
+        3. Luu bieu do so sanh va bieu do phan bo menh de CNF.
+        4. In bang thong ke dang Markdown.
+        """
+        self.run_sat_experiments()
+        self.run_min_conflicts_experiments()
+        self.plot_comparisons("benchmark_task1.png")
+        self.plot_cnf_breakdown("cnf_breakdown_task1.png")
+        table_output = self.export_to_table()
+        print("\n" + table_output)
+        return table_output
+
 
 if __name__ == "__main__":
     runner = BenchmarkRunner(sat_sizes=[4, 8, 12, 16, 20], mc_sizes=[8, 16, 32, 64], num_trials=5)
-    runner.run_sat_experiments()
-    runner.run_min_conflicts_experiments()
-    runner.plot_comparisons("benchmark_task1.png")
-    runner.plot_cnf_breakdown(save_path="cnf_breakdown_task1.png")
-    print("\n" + runner.export_to_table())
+    runner.run_all()
 

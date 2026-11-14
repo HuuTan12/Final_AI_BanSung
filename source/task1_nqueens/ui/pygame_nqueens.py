@@ -86,6 +86,18 @@ class NQueensGUI:
         # State tracking
         self.board: List[int] = [-1] * self.n  # board[col] = row (-1 means empty)
         self.algorithm_mode = "BACKTRACKING"   # "BACKTRACKING", "MIN_CONFLICTS_MAX", "MIN_CONFLICTS_TABU", "MIN_CONFLICTS_RANDOM", "SAT", "BROWSER", "MANUAL"
+        
+        # Danh sach thuat toan duoi dang Carousel/Pager (Giong giao dien Task 2)
+        self.algo_presets: List[Tuple[str, str, str]] = [
+            ("BACKTRACKING", "Backtracking (DFS Search)", "DFS voi quay lui, kiem tra ung vien & tia xung dot"),
+            ("SAT", "PySAT Glucose3 (CNF Solver)", "Bo giai Glucose3 giai mo hinh logic menh de CNF"),
+            ("MIN_CONFLICTS_MAX", "Min-Conflicts (Max-Conflict)", "Heuristic 1: Uu tien quan hau co nhieu xung dot nhat"),
+            ("MIN_CONFLICTS_TABU", "Min-Conflicts (Hybrid-Tabu)", "Heuristic 2: Tabu Search ket hop Random Walk"),
+            ("MIN_CONFLICTS_RANDOM", "Min-Conflicts (Random)", "Standard Min-Conflicts ngau nhien (Russell & Norvig)"),
+            ("BROWSER", "Solutions Browser", "Duyet bo suu tap tat ca truong hop nghiem hop le"),
+            ("MANUAL", "Manual Sandbox Mode", "Che do sandbox tu do click dat hoac xoa quan hau"),
+        ]
+        self.algo_index: int = 0
         self.is_playing = False
         self.speed_multiplier = 2              # 1x, 2x, 5x, 10x, 50x (Instant)
         self.anim_tick = 0
@@ -170,6 +182,22 @@ class NQueensGUI:
         generator = ConstraintGenerator(problem)
         self.cnf_stats = generator.get_clause_statistics()
         self.cnf_stats["theoretical_total"] = generator.get_theoretical_clause_count()
+
+    def _sync_algo_index(self) -> None:
+        """Dong bo algo_index voi che do thuat toan hien tai (self.algorithm_mode)."""
+        for idx, (mode_id, _, _) in enumerate(self.algo_presets):
+            if mode_id == self.algorithm_mode:
+                self.algo_index = idx
+                return
+        self.algo_index = 0
+
+    def _update_browser_info_button(self) -> None:
+        """Cap nhat nhan hien thi vi tri nghiem cho nut btn_sol_info khi dang o che do Browser."""
+        known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
+        total_str = f"{known_total:,}" if isinstance(known_total, int) else str(known_total)
+        for btn in self.buttons:
+            if btn["id"] == "btn_sol_info":
+                btn["label"] = f"Solution #{self.current_solution_idx + 1} / {total_str}"
 
     def _load_assets(self) -> None:
         """Loads graphical PNG assets from assets directory."""
@@ -335,43 +363,61 @@ class NQueensGUI:
             })
         self.buttons.append({"id": "n_inc", "label": "+", "rect": pygame.Rect(sb_x + sb_w - 24, btn_y, 24, 26), "category": "n_change"})
 
-        # 4. Algorithm Selector (Clean 2-Column Grid)
-        btn_y = 190
-        algos = [
-            ("BACKTRACKING", "Backtracking (DFS)"),
-            ("SAT", "PySAT Glucose3 (CNF)"),
-            ("MIN_CONFLICTS_MAX", "Min-Conflicts (Max)"),
-            ("MIN_CONFLICTS_TABU", "Min-Conflicts (Tabu)"),
-            ("MIN_CONFLICTS_RANDOM", "Min-Conflicts (Random)"),
-            ("MANUAL", "Manual Sandbox"),
-        ]
-        half_w = (sb_w - 8) // 2
-        algo_btn_h = 28
-        for idx, (algo_id, label) in enumerate(algos):
-            r_idx = idx // 2
-            c_idx = idx % 2
-            bx = sb_x + c_idx * (half_w + 8)
-            by = btn_y + r_idx * (algo_btn_h + 6)
-            self.buttons.append({
-                "id": f"algo_{algo_id}",
-                "label": label,
-                "rect": pygame.Rect(bx, by, half_w, algo_btn_h),
-                "algo": algo_id,
-                "category": "algo"
-            })
+        # 4. Compact Algorithm Carousel (Style like Task 2)
+        btn_y = 176
+        self._sync_algo_index()
+        curr_mode, curr_label, curr_desc = self.algo_presets[self.algo_index]
 
-        # 5. All-Solutions Browser Row
-        browser_y = btn_y + 3 * (algo_btn_h + 6)
+        btn_size = 32
+        cap_w = sb_w - 2 * btn_size - 12
+
+        # Left arrow button "<"
         self.buttons.append({
-            "id": "algo_BROWSER",
-            "label": "Solutions Browser",
-            "rect": pygame.Rect(sb_x, browser_y, half_w, algo_btn_h),
-            "algo": "BROWSER",
-            "category": "algo"
+            "id": "btn_algo_prev",
+            "label": "<",
+            "rect": pygame.Rect(sb_x, btn_y, btn_size, btn_size),
+            "category": "algo_nav"
         })
-        nav_w = (half_w - 6) // 2
-        self.buttons.append({"id": "btn_sol_prev", "label": "< PREV", "rect": pygame.Rect(sb_x + half_w + 8, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
-        self.buttons.append({"id": "btn_sol_next", "label": "NEXT >", "rect": pygame.Rect(sb_x + half_w + 8 + nav_w + 6, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
+        # Center capsule button with current algorithm label
+        self.buttons.append({
+            "id": "btn_algo_capsule",
+            "label": curr_label,
+            "rect": pygame.Rect(sb_x + btn_size + 6, btn_y, cap_w, btn_size),
+            "category": "algo_capsule"
+        })
+        # Right arrow button ">"
+        self.buttons.append({
+            "id": "btn_algo_next",
+            "label": ">",
+            "rect": pygame.Rect(sb_x + sb_w - btn_size, btn_y, btn_size, btn_size),
+            "category": "algo_nav"
+        })
+
+        # Sub-row (y = btn_y + 36 = 212)
+        if self.algorithm_mode == "BROWSER":
+            nav_btn_w = 84
+            info_w = sb_w - 2 * nav_btn_w - 12
+            self.buttons.append({
+                "id": "btn_sol_prev",
+                "label": "< PREV",
+                "rect": pygame.Rect(sb_x, btn_y + 36, nav_btn_w, 28),
+                "category": "browser_nav"
+            })
+            known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
+            total_str = f"{known_total:,}" if isinstance(known_total, int) else str(known_total)
+            sol_lbl = f"Solution #{self.current_solution_idx + 1} / {total_str}"
+            self.buttons.append({
+                "id": "btn_sol_info",
+                "label": sol_lbl,
+                "rect": pygame.Rect(sb_x + nav_btn_w + 6, btn_y + 36, info_w, 28),
+                "category": "browser_info"
+            })
+            self.buttons.append({
+                "id": "btn_sol_next",
+                "label": "NEXT >",
+                "rect": pygame.Rect(sb_x + sb_w - nav_btn_w, btn_y + 36, nav_btn_w, 28),
+                "category": "browser_nav"
+            })
 
     def _is_board_complete_and_valid(self) -> bool:
         """Returns True iff all N columns have a queen placed and zero attacking pairs exist."""
@@ -433,6 +479,20 @@ class NQueensGUI:
             self.board = [-1] * self.n
             self.step_generator = None
             self.status_message = "Manual Sandbox: L-Click place/move, R-Click remove, [F] Quick Solve!"
+
+        # Voi Min-Conflicts (Complete-State Formulation), khoi tao san trang thai ban dau voi day du N quan hau
+        if self.algorithm_mode.startswith("MIN_CONFLICTS") and self.step_generator:
+            try:
+                init_step = next(self.step_generator)
+                self.board = list(init_step.board)
+                self.current_conflicts = init_step.total_conflicts
+                self.restarts_count = init_step.restarts_count
+                self.cases_explored = init_step.step_num
+                self.candidate_type = init_step.event_type
+                self.status_message = init_step.message
+                self._update_conflicts()
+            except StopIteration:
+                pass
 
         # Save initial state in history
         self._record_history()
@@ -860,9 +920,18 @@ class NQueensGUI:
         elif btn.get("category") == "speed":
             self.speed_multiplier = btn["val"]
 
-        elif btn.get("category") == "algo":
+        elif bid == "btn_algo_prev":
             self.is_playing = False
-            self.algorithm_mode = btn["algo"]
+            self.algo_index = (self.algo_index - 1) % len(self.algo_presets)
+            self.algorithm_mode = self.algo_presets[self.algo_index][0]
+            self._init_buttons()
+            self._init_solver()
+
+        elif bid in ("btn_algo_next", "btn_algo_capsule"):
+            self.is_playing = False
+            self.algo_index = (self.algo_index + 1) % len(self.algo_presets)
+            self.algorithm_mode = self.algo_presets[self.algo_index][0]
+            self._init_buttons()
             self._init_solver()
 
         elif btn.get("category") == "n_select":
@@ -892,17 +961,23 @@ class NQueensGUI:
             self.is_playing = False
             if self.algorithm_mode != "BROWSER":
                 self.algorithm_mode = "BROWSER"
+                self._sync_algo_index()
+                self._init_buttons()
                 self._init_solver()
             else:
                 self._browser_prev_solution()
+                self._update_browser_info_button()
 
         elif bid == "btn_sol_next":
             self.is_playing = False
             if self.algorithm_mode != "BROWSER":
                 self.algorithm_mode = "BROWSER"
+                self._sync_algo_index()
+                self._init_buttons()
                 self._init_solver()
             else:
                 self._browser_next_solution()
+                self._update_browser_info_button()
 
     def run(self) -> None:
         """Main graphical event loop running at 60 FPS."""
@@ -973,6 +1048,12 @@ class NQueensGUI:
                         self.speed_multiplier = 10
                     elif event.key == pygame.K_5:
                         self.speed_multiplier = 50
+                    elif event.key in (pygame.K_TAB, pygame.K_m):
+                        self.is_playing = False
+                        self.algo_index = (self.algo_index + 1) % len(self.algo_presets)
+                        self.algorithm_mode = self.algo_presets[self.algo_index][0]
+                        self._init_buttons()
+                        self._init_solver()
                     elif event.key == pygame.K_ESCAPE:
                         running = False
 
@@ -1405,7 +1486,17 @@ class NQueensGUI:
 
         # Section Label for Algorithms
         algo_lbl = self.fonts["small"].render("SELECT ALGORITHM / SOLVER MODE:", True, self.COLOR_TEXT_DIM)
-        self.screen.blit(algo_lbl, (sb_x + 16, 172))
+        self.screen.blit(algo_lbl, (sb_x + 16, 160))
+
+        # Description Pill for non-Browser modes (Row at y = 214)
+        if self.algorithm_mode != "BROWSER":
+            desc_rect = pygame.Rect(sb_x + 16, 214, sb_w - 32, 26)
+            pygame.draw.rect(self.screen, (18, 24, 34), desc_rect, border_radius=5)
+            pygame.draw.rect(self.screen, (36, 48, 68), desc_rect, 1, border_radius=5)
+            self._sync_algo_index()
+            _, _, curr_desc = self.algo_presets[self.algo_index]
+            desc_surf = self.fonts["small"].render(curr_desc, True, self.COLOR_QUEEN_CYAN)
+            self.screen.blit(desc_surf, (desc_rect.centerx - desc_surf.get_width() // 2, desc_rect.centery - desc_surf.get_height() // 2))
 
         # Sync PLAY/PAUSE button label dynamically
         for btn in self.buttons:
@@ -1414,11 +1505,11 @@ class NQueensGUI:
             self._draw_button(btn)
 
         # Section Card 1: Clean Search Telemetry Grid (Req 2 & 3)
-        card1_y = 336
+        card1_y = 250
         self._draw_diagnostics_card(sb_x + 16, card1_y, sb_w - 32)
 
         # Section Card 2: Propositional Logic CNF Summary (Req 1)
-        card2_y = 562
+        card2_y = 480
         self._draw_cnf_card(sb_x + 16, card2_y, sb_w - 32)
 
     def _draw_metric_tile(
@@ -1452,8 +1543,6 @@ class NQueensGUI:
         is_active = False
         if cat == "speed" and btn.get("val") == self.speed_multiplier:
             is_active = True
-        elif cat == "algo" and btn.get("algo") == self.algorithm_mode:
-            is_active = True
         elif cat == "n_select" and btn.get("n_val") == self.n:
             is_active = True
         elif bid == "btn_play" and self.is_playing:
@@ -1467,6 +1556,22 @@ class NQueensGUI:
         elif bid == "btn_solve":
             bg_color = (30, 112, 142) if is_hover else (22, 82, 108)
             border_color = (86, 204, 248) if is_hover else (46, 164, 214)
+            text_color = (255, 255, 255)
+        elif bid in ("btn_algo_prev", "btn_algo_next"):
+            bg_color = (45, 58, 82) if is_hover else (24, 32, 46)
+            border_color = self.COLOR_QUEEN_GOLD if is_hover else (40, 52, 72)
+            text_color = (255, 255, 255)
+        elif bid == "btn_algo_capsule":
+            bg_color = (28, 40, 60) if is_hover else (20, 28, 42)
+            border_color = self.COLOR_QUEEN_GOLD if is_hover else (48, 140, 210)
+            text_color = (255, 255, 255) if is_hover else self.COLOR_QUEEN_CYAN
+        elif bid == "btn_sol_info":
+            bg_color = (18, 24, 34)
+            border_color = (42, 54, 76)
+            text_color = self.COLOR_QUEEN_GOLD
+        elif cat == "browser_nav":
+            bg_color = (36, 48, 68) if is_hover else (26, 34, 48)
+            border_color = self.COLOR_QUEEN_GOLD if is_hover else (54, 72, 100)
             text_color = (255, 255, 255)
         elif is_active:
             bg_color = (36, 110, 185)
@@ -1484,7 +1589,8 @@ class NQueensGUI:
         pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
         pygame.draw.rect(self.screen, border_color, rect, 1, border_radius=5)
 
-        lbl_surf = self.fonts["body_bold" if (is_active or bid in ("btn_play", "btn_solve")) else "body"].render(btn["label"], True, text_color)
+        use_bold = is_active or bid in ("btn_play", "btn_solve", "btn_algo_prev", "btn_algo_next", "btn_algo_capsule", "btn_sol_prev", "btn_sol_next")
+        lbl_surf = self.fonts["body_bold" if use_bold else "body"].render(btn["label"], True, text_color)
         self.screen.blit(lbl_surf, (rect.centerx - lbl_surf.get_width() // 2, rect.centery - lbl_surf.get_height() // 2))
 
     def _draw_diagnostics_card(self, x: int, y: int, w: int) -> None:

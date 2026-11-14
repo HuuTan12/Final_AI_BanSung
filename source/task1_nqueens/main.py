@@ -29,9 +29,10 @@ def cnf_info(n):
  
 def sat_info(n):
     r = Glucose3SATSolver().solve(n)
-    print("\n2. SAT")
+    print("\n2. SAT (Glucose3 PySAT)")
     print("solved:", r.is_solved)
-    print("time:", r.execution_time * 1000, "ms")
+    print("clauses:", r.num_clauses)
+    print("time:", round(r.execution_time * 1000, 3), "ms")
     print("solution:", r.solution)
  
  

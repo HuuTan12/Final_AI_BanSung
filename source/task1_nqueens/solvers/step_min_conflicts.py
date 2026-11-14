@@ -196,7 +196,12 @@ class StepMinConflictsGenerator:
                     elif c_count == min_c:
                         best_rows.append(r)
 
-                chosen_row = random.choice(best_rows)
+                # Uu tien di chuyen sang hang khac co cung so xung dot thap nhat (sideways move / plateau search - Slide 31)
+                other_best_rows = [r for r in best_rows if r != current_row]
+                if other_best_rows:
+                    chosen_row = random.choice(other_best_rows)
+                else:
+                    chosen_row = current_row
 
                 # Emit SELECT_COL & EVAL_ROWS event
                 h_name = self.heuristic.__class__.__name__

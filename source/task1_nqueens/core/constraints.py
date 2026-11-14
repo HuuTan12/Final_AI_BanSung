@@ -78,33 +78,39 @@ class ConstraintGenerator:
 
     def generate_diagonal_clauses(self) -> List[List[int]]:
         r"""
-        Generates diagonal constraints: each diagonal has at most one queen.
-        - Main diagonals (\): r - c = k for -(N - 1) <= k <= N - 1
-        - Anti diagonals (/): r + c = k for 0 <= k <= 2 * N - 2
+        Generates diagonal constraints: each diagonal has at most one queen (AMO).
+        - Main diagonals (\): cac o co cung gia tri (r - c)
+        - Anti diagonals (/): cac o co cung gia tri (r + c)
         """
         clauses: List[List[int]] = []
 
-        # 1. Main diagonals (top-left to bottom-right): r - c = k
-        for k in range(-(self.n - 1), self.n):
-            diag = [
-                self.problem.to_var(r, c)
-                for r in range(self.n)
-                for c in range(self.n)
-                if r - c == k
-            ]
+        # Gom cac bien tren cung duong cheo chinh va duong cheo phu
+        main_diagonals: Dict[int, List[int]] = {}
+        anti_diagonals: Dict[int, List[int]] = {}
+
+        for r in range(self.n):
+            for c in range(self.n):
+                var = self.problem.to_var(r, c)
+                k_main = r - c
+                k_anti = r + c
+
+                if k_main not in main_diagonals:
+                    main_diagonals[k_main] = []
+                main_diagonals[k_main].append(var)
+
+                if k_anti not in anti_diagonals:
+                    anti_diagonals[k_anti] = []
+                anti_diagonals[k_anti].append(var)
+
+        # Tao menh de At-Most-One (AMO) cho tung duong cheo chinh
+        for diag in main_diagonals.values():
             if len(diag) >= 2:
                 for i in range(len(diag)):
                     for j in range(i + 1, len(diag)):
                         clauses.append([-diag[i], -diag[j]])
 
-        # 2. Anti diagonals (top-right to bottom-left): r + c = k
-        for k in range(0, 2 * self.n - 1):
-            anti = [
-                self.problem.to_var(r, c)
-                for r in range(self.n)
-                for c in range(self.n)
-                if r + c == k
-            ]
+        # Tao menh de At-Most-One (AMO) cho tung duong cheo phu
+        for anti in anti_diagonals.values():
             if len(anti) >= 2:
                 for i in range(len(anti)):
                     for j in range(i + 1, len(anti)):

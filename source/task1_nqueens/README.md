@@ -87,6 +87,7 @@ The project includes an interactive graphical interface (`pygame_nqueens.py`) de
 | **Step Backward (-1)** | `LEFT` / `A` | Rewind one step back in history (Step History Undo) |
 | **Reset** | `R` | Reset chessboard and re-initialize active solver |
 | **Speed Multiplier** | `1` .. `5` | 1x, 2x, 5x, 10x, or  Max (Instant) |
+| **Change Algorithm** | Click `<` / `>` or `TAB` / `M` | Cycle through available algorithms (DFS, SAT, Min-Conflicts, Browser, Manual) |
 | **Select Board Size N** | Click `[-]` / `[+]` | Change chessboard dimension $N = 4, 6, 8, 10, 12, 16$ |
 | **Browse Solutions** | Click `LEFT / RIGHT` | Cycle through distinct valid solution configurations |
 | **Manual Placement** | Left Click | Click any square to place, move, or remove a queen |

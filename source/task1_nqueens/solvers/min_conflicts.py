@@ -123,8 +123,12 @@ class MinConflictsSolver(BaseSolver):
                     elif c_count == min_c:
                         best_rows.append(r)
 
-                # Break ties uniformly at random
-                chosen_row = random.choice(best_rows)
+                # Uu tien di chuyen sang hang khac co cung so xung dot thap nhat (sideways move / plateau search - Slide 31)
+                other_best_rows = [r for r in best_rows if r != current_row]
+                if other_best_rows:
+                    chosen_row = random.choice(other_best_rows)
+                else:
+                    chosen_row = current_row
 
                 # Update state and frequency tables in O(1)
                 if chosen_row != current_row:
