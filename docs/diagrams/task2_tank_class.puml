@@ -8,29 +8,28 @@ skinparam defaultFontSize 11
 title Task 2: Tank Battle Game - Biểu đồ Lớp chi tiết (Class Diagram OOP)
 
 package "task2_tank.engine" {
-    enum Direction <<Enum>> {
-        UP = (0, -1)
-        DOWN = (0, 1)
-        LEFT = (-1, 0)
-        RIGHT = (1, 0)
+    enum Direction {
+        UP
+        DOWN
+        LEFT
+        RIGHT
     }
 
-    enum Action <<Enum>> {
+    enum Action {
         MOVE_UP
         MOVE_DOWN
         MOVE_LEFT
         MOVE_RIGHT
         FIRE
         STAY
-        + {static} get_move_direction(action: Action) : Direction
+        + {static} get_move_direction(action: Action) : Optional[Direction]
     }
 
     abstract class GameEntity {
         + x : int
         + y : int
         + hp : int
-        + __init__(x: int, y: int, hp: int)
-        + is_alive : bool
+        + is_alive() : bool
         + take_damage(damage: int) : void
     }
 
@@ -38,20 +37,17 @@ package "task2_tank.engine" {
         + {static} INITIAL_HP : int = 6
         + player_id : int
         + direction : Direction
-        + __init__(x: int, y: int, player_id: int, direction: Direction)
         + clone() : Tank
     }
 
     class Base {
         + {static} INITIAL_HP : int = 9
         + player_id : int
-        + __init__(x: int, y: int, player_id: int)
         + clone() : Base
     }
 
     class Wall {
         + {static} INITIAL_HP : int = 3
-        + __init__(x: int, y: int)
         + clone() : Wall
     }
 
@@ -62,162 +58,131 @@ package "task2_tank.engine" {
         + direction : Direction
         + owner_id : int
         + is_active : bool
-        + __init__(x: int, y: int, direction: Direction, owner_id: int)
         + clone() : Bullet
     }
 
     class GameState {
         + width : int
         + height : int
+        + current_player : int
+        + cycle_count : int
         + tanks : Dict[int, Tank]
         + bases : Dict[int, Base]
         + walls : Dict[Tuple[int, int], Wall]
         + bullets : List[Bullet]
-        + current_player : int
-        + game_cycle : int
-        + max_cycles : int
-        + __init__(width: int, height: int)
-        + clone() : GameState
         + get_legal_actions(player_id: int) : List[Action]
-        + is_terminal() : bool
-        + get_winner() : Optional[int]
-        + get_utility(player_id: int) : float
+        + is_terminal(max_cycles: int) : bool
+        + get_winner(max_cycles: int) : Optional[int]
+        + clone() : GameState
     }
 
     class GameRules {
         + {static} apply_action(state: GameState, action: Action) : GameState
-        + {static} step_bullets(state: GameState) : void
-        - {static} _move_tank(state: GameState, player_id: int, direction: Direction) : void
-        - {static} _fire_bullet(state: GameState, player_id: int) : void
-    }
-
-    class MapBuilder {
-        + {static} create_standard_map(width: int, height: int) : GameState
+        + {static} step_bullets_one_cell(state: GameState) : List[Tuple]
     }
 }
 
 package "task2_tank.agents" {
     class SearchStats <<dataclass>> {
-        + explored_nodes : int
-        + prune_count : int
-        + search_depth : int
-        + execution_time : float
+        + nodes_explored : int
+        + prunes_count : int
+        + search_time : float
+        + max_depth_reached : int
+        + chosen_action : Optional[Action]
     }
 
     abstract class BaseAgent {
         + name : str
+        + player_id : int
         + stats : SearchStats
-        + __init__(name: str)
-        + {abstract} choose_action(state: GameState, player_id: int) : Action
+        + {abstract} choose_action(state: GameState) : Action
         + reset_stats() : void
-    }
-
-    class TankEvaluator {
-        - w_tank_hp : float
-        - w_base_hp : float
-        - w_dist_base : float
-        - w_line_of_fire : float
-        - w_bullet_danger : float
-        + __init__(...)
-        + evaluate(state: GameState, player_id: int) : float
     }
 
     class MinimaxAgent {
         - depth : int
-        + __init__(depth: int)
-        + choose_action(state: GameState, player_id: int) : Action
-        - _minimax(state: GameState, depth: int, is_maximizing: bool, player_id: int) : Tuple[float, Action]
+        + choose_action(state: GameState) : Action
+        - _max_value(state: GameState, depth: int) : float
+        - _min_value(state: GameState, depth: int) : float
     }
 
     class AlphaBetaAgent {
         - depth : int
-        + __init__(depth: int)
-        + choose_action(state: GameState, player_id: int) : Action
-        - _alphabeta(state: GameState, depth: int, alpha: float, beta: float, is_maximizing: bool, player_id: int) : Tuple[float, Action]
+        + choose_action(state: GameState) : Action
+        - _max_value(state: GameState, depth: int, alpha: float, beta: float) : float
+        - _min_value(state: GameState, depth: int, alpha: float, beta: float) : float
     }
 
     class HeuristicMinimaxAgent {
         - depth : int
         - evaluator : TankEvaluator
-        + __init__(depth: int, evaluator: TankEvaluator)
-        + choose_action(state: GameState, player_id: int) : Action
-        - _heuristic_minimax(state: GameState, depth: int, is_maximizing: bool, player_id: int) : Tuple[float, Action]
+        + choose_action(state: GameState) : Action
     }
 
     class HeuristicAlphaBetaAgent {
         - depth : int
         - evaluator : TankEvaluator
-        + __init__(depth: int, evaluator: TankEvaluator)
-        + choose_action(state: GameState, player_id: int) : Action
-        - _heuristic_alphabeta(state: GameState, depth: int, alpha: float, beta: float, is_maximizing: bool, player_id: int) : Tuple[float, Action]
+        + choose_action(state: GameState) : Action
+        - _order_moves(state: GameState, actions: List[Action], player_id: int) : List[Action]
+    }
+
+    class IterativeDeepeningAgent {
+        - max_depth : int
+        - time_limit : float
+        - transposition_table : dict
+        + choose_action(state: GameState) : Action
+    }
+
+    class TankEvaluator {
+        + {static} evaluate(state: GameState, player_id: int) : float
+        + {static} get_tactical_distance(pos1: Tuple, pos2: Tuple, state: GameState) : int
+        + {static} has_line_of_sight(from_pos: Tuple, to_pos: Tuple, state: GameState) : bool
     }
 }
 
-package "task2_tank.agents.external" {
-    class RivalGroupAgent {
-        + choose_action(state: GameState, player_id: int) : Action
-    }
-}
-
-package "task2_tank" {
+package "task2_tank.agent_loader" {
     class AgentLoader {
-        + {static} load_agent_from_file(file_path: str) : Optional[BaseAgent]
-        + {static} discover_external_agents(folder_path: str) : List[BaseAgent]
+        + {static} load_agent_from_file(py_file_path: str) : BaseAgent
+        + {static} discover_external_agents(dir_path: str) : List[BaseAgent]
     }
 }
 
 package "task2_tank.ui" {
     class TankGameGUI {
-        - cell_size : int
-        - fps : int
-        - is_paused : bool
-        - step_mode : bool
-        + __init__(cell_size: int, fps: int)
-        + init_display(width_cells: int, height_cells: int) : void
-        + render(state: GameState, agent0: BaseAgent, agent1: BaseAgent) : void
-        + handle_events() : bool
+        - state : GameState
+        - agent0 : BaseAgent
+        - agent1 : BaseAgent
+        + run() : void
+        + animate_turn(prev_state: GameState, action: Action, next_state: GameState) : void
+        + render(state: GameState) : void
     }
 }
 
-package "task2_tank.experiments" {
-    class TankTournament {
-        - rounds_per_pair : int
-        - results : List[Dict[str, Any]]
-        + __init__(rounds_per_pair: int)
-        + run_benchmark() : void
-        + export_latex_table() : str
-    }
-}
-
-' Relationships
+' Inheritance & Associations
 GameEntity <|-- Tank
 GameEntity <|-- Base
 GameEntity <|-- Wall
-Tank o-- Direction
-Bullet o-- Direction
 
-GameState *-- "2" Tank
-GameState *-- "2" Base
-GameState *-- "*" Wall
-GameState *-- "*" Bullet
+GameState *-- Tank
+GameState *-- Base
+GameState *-- Wall
+GameState *-- Bullet
 
-GameRules ..> GameState : "chuyển trạng thái & va chạm"
-GameRules ..> Action : "áp dụng hành động"
-MapBuilder ..> GameState : "khởi tạo bản đồ"
+GameRules ..> GameState
 
 BaseAgent <|-- MinimaxAgent
 BaseAgent <|-- AlphaBetaAgent
 BaseAgent <|-- HeuristicMinimaxAgent
 BaseAgent <|-- HeuristicAlphaBetaAgent
-BaseAgent <|-- RivalGroupAgent : "kế thừa giao diện chuẩn"
-BaseAgent *-- SearchStats
+BaseAgent <|-- IterativeDeepeningAgent
 
-HeuristicMinimaxAgent o-- TankEvaluator : "sử dụng hàm heuristic"
-HeuristicAlphaBetaAgent o-- TankEvaluator : "sử dụng hàm heuristic"
+BaseAgent ..> SearchStats : "ghi nhận số liệu"
+HeuristicMinimaxAgent ..> TankEvaluator : "đánh giá hàm heuristic"
+HeuristicAlphaBetaAgent ..> TankEvaluator : "đánh giá & sắp xếp nhánh"
+IterativeDeepeningAgent ..> TankEvaluator : "đánh giá heuristic"
 
-AgentLoader ..> BaseAgent : "nạp động file .py ngoài"
+AgentLoader ..> BaseAgent : "nạp động file bot .py"
 TankGameGUI ..> GameState : "hiển thị đồ họa"
-TankGameGUI ..> BaseAgent : "hiển thị metrics"
-TankTournament ..> BaseAgent : "so sánh 4 cấu hình"
+TankGameGUI ..> BaseAgent : "điều khiển lượt đi"
 
 @enduml

@@ -1,234 +1,181 @@
-"""
-game_state.py - Game State Representation (Zero-Sum Game Formulation)
-Course: Introduction to Artificial Intelligence (503043)
-Author: Student Group
-Description:
-    Represents the complete state of the Tank Battle game at any given point
-    in the adversarial search tree. Implements the formal Zero-Sum game
-    tuple: S0, PLAYER, ACTIONS, RESULT, TERMINAL-TEST, UTILITY.
-    (Task 2 - Req 1, 1.0 pt)
-"""
-
 from typing import List, Dict, Tuple, Optional
 from task2_tank.engine.actions import Action, Direction
 from task2_tank.engine.entities import Tank, Base, Wall, Bullet
 
 
 class GameState:
-    """
-    Complete snapshot of the Tank Battle game world.
-
-    Attributes:
-        width, height  : Board grid dimensions
-        tanks          : {player_id -> Tank}
-        bases          : {player_id -> Base}
-        walls          : {(x, y) -> Wall}
-        bullets        : List of active Bullet objects
-        current_player : 0 or 1, whose turn it is (PLAYER function)
-        game_cycle     : Number of full turns elapsed so far
-        max_cycles     : Draw condition when game_cycle >= this value
-    """
 
     def __init__(self, width: int = 13, height: int = 13):
         self.width = width
         self.height = height
+
         self.tanks: Dict[int, Tank] = {}
         self.bases: Dict[int, Base] = {}
         self.walls: Dict[Tuple[int, int], Wall] = {}
         self.bullets: List[Bullet] = []
         self.foliage: set = set()
+
         self.current_player: int = 0
         self.game_cycle: int = 0
         self.max_cycles: int = 200
 
-    # ------------------------------------------------------------------
-    # Deep copy - needed to expand the search tree without side effects
-    # ------------------------------------------------------------------
-    def clone(self) -> "GameState":
-        """
-        Creates a fully independent deep copy of the game state.
-        Every entity is cloned so that modifications in a child node
-        do not affect the parent node.
-        """
+    def clone(self) -> 'GameState':
         new_state = GameState(self.width, self.height)
+
         new_state.current_player = self.current_player
         new_state.game_cycle = self.game_cycle
         new_state.max_cycles = self.max_cycles
         new_state.foliage = self.foliage
 
-        # Clone all entities individually
-        for pid, tank in self.tanks.items():
-            new_state.tanks[pid] = tank.clone()
-        for pid, base in self.bases.items():
-            new_state.bases[pid] = base.clone()
-        for pos, wall in self.walls.items():
-            new_state.walls[pos] = wall.clone()
-        for bullet in self.bullets:
-            new_state.bullets.append(bullet.clone())
+        for player_id in self.tanks:
+            old_tank = self.tanks[player_id]
+            new_tank = old_tank.clone()
+            new_state.tanks[player_id] = new_tank
+
+        for player_id in self.bases:
+            old_base = self.bases[player_id]
+            new_base = old_base.clone()
+            new_state.bases[player_id] = new_base
+
+        for position in self.walls:
+            old_wall = self.walls[position]
+            new_wall = old_wall.clone()
+            new_state.walls[position] = new_wall
+
+        for old_bullet in self.bullets:
+            new_bullet = old_bullet.clone()
+            new_state.bullets.append(new_bullet)
 
         return new_state
 
-    # ------------------------------------------------------------------
-    # ACTIONS(s) - Returns all legal actions for player_id
-    # ------------------------------------------------------------------
     def get_legal_actions(self, player_id: int) -> List[Action]:
-        """
-        Returns the list of legal actions for the tank belonging to player_id.
-        Move actions are illegal if the target cell is blocked by:
-        - A living Wall
-        - Any Base (own or enemy)
-        - The enemy Tank
-        - The board border
-        FIRE and STAY are always legal.
-        """
         if player_id not in self.tanks:
             return [Action.STAY]
 
         tank = self.tanks[player_id]
+
         if not tank.is_alive:
             return [Action.STAY]
 
-        legal = []
+        legal_actions = []
 
-        move_actions = [
-            Action.MOVE_UP,
-            Action.MOVE_DOWN,
-            Action.MOVE_LEFT,
-            Action.MOVE_RIGHT,
-        ]
-
+        move_actions = [Action.MOVE_UP, Action.MOVE_DOWN, Action.MOVE_LEFT, Action.MOVE_RIGHT]
         opponent_id = 1 - player_id
 
         for action in move_actions:
             direction = Action.get_move_direction(action)
             dx, dy = direction.value
-            nx, ny = tank.x + dx, tank.y + dy
 
-            # Check board boundaries
-            if not (0 <= nx < self.width and 0 <= ny < self.height):
+            new_x = tank.x + dx
+            new_y = tank.y + dy
+
+            if new_x < 0 or new_x >= self.width:
+                continue
+            if new_y < 0 or new_y >= self.height:
                 continue
 
-            # Check if destination cell is blocked by entity
+            new_position = (new_x, new_y)
             is_blocked = False
-            if (nx, ny) in self.walls and self.walls[(nx, ny)].is_alive:
-                is_blocked = True
-            elif any(base.x == nx and base.y == ny and base.is_alive for base in self.bases.values()):
-                is_blocked = True
-            elif (opponent_id in self.tanks and
-                  self.tanks[opponent_id].is_alive and
-                  self.tanks[opponent_id].x == nx and
-                  self.tanks[opponent_id].y == ny):
-                is_blocked = True
 
-            # If blocked and tank is already facing this direction, action is redundant with STAY
+            if new_position in self.walls and self.walls[new_position].is_alive:
+                is_blocked = True
+            else:
+                blocked_by_base = False
+
+                for base in self.bases.values():
+                    if base.x == new_x and base.y == new_y and base.is_alive:
+                        blocked_by_base = True
+
+                if blocked_by_base:
+                    is_blocked = True
+                else:
+                    if opponent_id in self.tanks:
+                        opponent_tank = self.tanks[opponent_id]
+
+                        if opponent_tank.is_alive and opponent_tank.x == new_x and opponent_tank.y == new_y:
+                            is_blocked = True
+
             if is_blocked and tank.direction == direction:
                 continue
 
-            # Legal move: either advances tank into free cell or turns tank towards target/obstacle
-            legal.append(action)
+            legal_actions.append(action)
 
-        # FIRE and STAY are always legal, with STAY as the final fallback
-        legal.append(Action.FIRE)
-        legal.append(Action.STAY)
+        legal_actions.append(Action.FIRE)
+        legal_actions.append(Action.STAY)
 
-        return legal
+        return legal_actions
 
-    # ------------------------------------------------------------------
-    # TERMINAL-TEST(s)
-    # ------------------------------------------------------------------
     def is_terminal(self) -> bool:
-        """
-        The game ends when:
-        1. Either base is destroyed (hp <= 0)
-        2. Either tank is destroyed (hp <= 0)
-        3. Max cycles reached (draw)
-        """
-        # Check bases
         for base in self.bases.values():
             if not base.is_alive:
                 return True
 
-        # Check tanks
         for tank in self.tanks.values():
             if not tank.is_alive:
                 return True
 
-        # Check cycle limit (draw condition)
         if self.game_cycle >= self.max_cycles:
             return True
 
         return False
 
-    # ------------------------------------------------------------------
-    # get_winner - identifies which player won
-    # ------------------------------------------------------------------
     def get_winner(self) -> Optional[int]:
-        """
-        Returns:
-          0 if player 0 wins, 1 if player 1 wins,
-          -1 for draw, None if game is not over.
-        """
         if not self.is_terminal():
             return None
 
-        # Check destroyed tank/base first, even if it happened on the final cycle
-        p1_base_dead = 1 in self.bases and not self.bases[1].is_alive
-        p1_tank_dead = 1 in self.tanks and not self.tanks[1].is_alive
+        player1_base_dead = 1 in self.bases and not self.bases[1].is_alive
+        player1_tank_dead = 1 in self.tanks and not self.tanks[1].is_alive
+        player0_base_dead = 0 in self.bases and not self.bases[0].is_alive
+        player0_tank_dead = 0 in self.tanks and not self.tanks[0].is_alive
 
-        p0_base_dead = 0 in self.bases and not self.bases[0].is_alive
-        p0_tank_dead = 0 in self.tanks and not self.tanks[0].is_alive
+        player0_lost = player0_base_dead or player0_tank_dead
+        player1_lost = player1_base_dead or player1_tank_dead
 
-        p0_lost = p0_base_dead or p0_tank_dead
-        p1_lost = p1_base_dead or p1_tank_dead
+        if player0_lost and player1_lost:
+            return -1
 
-        if p0_lost and p1_lost:
-            return -1   # Simultaneous mutual destruction -> draw
-        if p0_lost:
-            return 1    # Player 1 wins
-        if p1_lost:
-            return 0    # Player 0 wins
+        if player0_lost:
+            return 1
 
-        # Draw when cycle limit reached and both sides still alive
+        if player1_lost:
+            return 0
+
         if self.game_cycle >= self.max_cycles:
-            return -1  # Draw
+            return -1
 
-        return -1  # Fallback draw
+        return -1
 
-    # ------------------------------------------------------------------
-    # UTILITY(s, p) - Zero-Sum utility function
-    # ------------------------------------------------------------------
     def get_utility(self, player_id: int) -> float:
-        """
-        Terminal state utility from player_id's perspective (Lecture 07 - Slide 10).
-        Zero-Sum property: UTILITY(s, MAX) = -UTILITY(s, MIN)
-          +10000.0 if player_id wins
-          -10000.0 if player_id loses
-           0.0     if draw (or undecided / non-terminal cutoff for pure search)
-        """
         if self.is_terminal():
             winner = self.get_winner()
+            opponent_id = 1 - player_id
+
             if winner == player_id:
                 return 10000.0
-            elif winner == 1 - player_id:
+            elif winner == opponent_id:
                 return -10000.0
-            return 0.0
+            else:
+                return 0.0
 
-        # Undecided state in pure search without heuristic evaluation
         return 0.0
 
-    # ------------------------------------------------------------------
-    # Utility helpers
-    # ------------------------------------------------------------------
     def is_cell_blocked(self, x: int, y: int) -> bool:
-        """Returns True if cell (x, y) cannot be entered by a tank."""
-        if not (0 <= x < self.width and 0 <= y < self.height):
+        if x < 0 or x >= self.width:
             return True
-        if (x, y) in self.walls and self.walls[(x, y)].is_alive:
+        if y < 0 or y >= self.height:
             return True
+
+        position = (x, y)
+
+        if position in self.walls and self.walls[position].is_alive:
+            return True
+
         for base in self.bases.values():
             if base.x == x and base.y == y and base.is_alive:
                 return True
+
         for tank in self.tanks.values():
             if tank.x == x and tank.y == y and tank.is_alive:
                 return True
+
         return False

@@ -52,79 +52,96 @@ classDiagram
     +Direction direction
     +int owner_id
     +bool is_active
-    +clone() Bullet
   }
 
   class GameState {
     +int width
     +int height
+    +int current_player
+    +int cycle_count
     +dict tanks
     +dict bases
     +dict walls
     +list bullets
-    +int current_player
-    +int game_cycle
-    +clone() GameState
     +get_legal_actions(player_id) list
-    +is_terminal() bool
-    +get_winner() int
-    +get_utility(player_id) float
+    +is_terminal(max_cycles) bool
+    +get_winner(max_cycles) int
+    +clone() GameState
   }
 
   class GameRules {
     +apply_action(state, action)$ GameState
-    +step_bullets(state)$ void
-    -_move_tank(state, player_id, direction)$ void
-    -_fire_bullet(state, player_id)$ void
+    +step_bullets_one_cell(state)$ list
   }
 
   class BaseAgent {
     <<abstract>>
     +str name
+    +int player_id
     +SearchStats stats
-    +choose_action(state, player_id)* Action
+    +choose_action(state)* Action
     +reset_stats() void
-  }
-
-  class TankEvaluator {
-    +evaluate(state, player_id) float
   }
 
   class MinimaxAgent {
     -int depth
-    +choose_action(state, player_id) Action
+    +choose_action(state) Action
+    -_max_value(state, d) float
+    -_min_value(state, d) float
   }
 
   class AlphaBetaAgent {
     -int depth
-    +choose_action(state, player_id) Action
+    +choose_action(state) Action
+    -_max_value(state, d, alpha, beta) float
+    -_min_value(state, d, alpha, beta) float
   }
 
   class HeuristicMinimaxAgent {
     -int depth
     -TankEvaluator evaluator
-    +choose_action(state, player_id) Action
+    +choose_action(state) Action
   }
 
   class HeuristicAlphaBetaAgent {
     -int depth
     -TankEvaluator evaluator
-    +choose_action(state, player_id) Action
+    +choose_action(state) Action
+    -_order_moves(state, actions, player_id) list
   }
 
-  class RivalGroupAgent {
-    +choose_action(state, player_id) Action
+  class IterativeDeepeningAgent {
+    -int max_depth
+    -float time_limit
+    -dict transposition_table
+    +choose_action(state) Action
+  }
+
+  class TankEvaluator {
+    +evaluate(state, player_id)$ float
+    +get_tactical_distance(pos1, pos2, state)$ int
+    +has_line_of_sight(from_pos, to_pos, state)$ bool
   }
 
   class AgentLoader {
-    +load_agent_from_file(file_path)$ BaseAgent
-    +discover_external_agents(folder_path)$ list
+    +load_agent_from_file(py_file_path)$ BaseAgent
+    +discover_external_agents(dir_path)$ list
+  }
+
+  class TankTournament {
+    -int max_cycles
+    +run_single_move_benchmark(depths) dict
+    +run_tournament() dict
+    +export_tables() str
   }
 
   class TankGameGUI {
-    +init_display(w, h) void
-    +render(state, p0, p1) void
-    +handle_events() bool
+    -GameState state
+    -BaseAgent agent0
+    -BaseAgent agent1
+    +run() void
+    +animate_turn(prev_state, action, next_state) void
+    +render(state) void
   }
 
   GameEntity <|-- Tank
@@ -134,13 +151,17 @@ classDiagram
   GameState *-- Base
   GameState *-- Wall
   GameState *-- Bullet
+  GameRules ..> GameState
   BaseAgent <|-- MinimaxAgent
   BaseAgent <|-- AlphaBetaAgent
   BaseAgent <|-- HeuristicMinimaxAgent
   BaseAgent <|-- HeuristicAlphaBetaAgent
-  BaseAgent <|-- RivalGroupAgent
-  HeuristicMinimaxAgent o-- TankEvaluator
-  HeuristicAlphaBetaAgent o-- TankEvaluator
-  GameRules ..> GameState
+  BaseAgent <|-- IterativeDeepeningAgent
+  HeuristicMinimaxAgent ..> TankEvaluator
+  HeuristicAlphaBetaAgent ..> TankEvaluator
+  IterativeDeepeningAgent ..> TankEvaluator
   AgentLoader ..> BaseAgent
+  TankTournament ..> BaseAgent
+  TankTournament ..> GameState
   TankGameGUI ..> GameState
+  TankGameGUI ..> BaseAgent

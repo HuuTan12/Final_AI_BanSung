@@ -1,39 +1,48 @@
 flowchart TD
-  subgraph ProjectRoot["AI_final_project / source"]
-    subgraph Task1["Task 1: N-Queens (Local Search & SAT)"]
-      T1_Core["task1.core\n(Problem & CNF Constraints)"]
-      T1_Solvers["task1.solvers\n(Glucose3 SAT & Min-Conflicts)"]
-      T1_Exp["task1.experiments\n(BenchmarkRunner)"]
-      T1_NB["nqueens.ipynb\n(Jupyter Notebook)"]
+  subgraph ProjectRoot["AI Final Project / source"]
+    subgraph Task1["Task 1: N-Queens (Local Search & Propositional Logic)"]
+      T1_Core["task1_nqueens.core\n(NQueensProblem, ConstraintGenerator, CNF)"]
+      T1_Solvers["task1_nqueens.solvers\n(Glucose3 SAT, Min-Conflicts, Backtracking)"]
+      T1_Heuristics["task1_nqueens.solvers.heuristics\n(Random, Max-Conflict, Hybrid-Tabu)"]
+      T1_Exp["task1_nqueens.experiments\n(BenchmarkRunner, Multi-trial Evaluation)"]
+      T1_UI["task1_nqueens.ui\n(PyGame GUI & Notebook Visualizer)"]
+      T1_NB["nqueens.ipynb\n(Jupyter Interactive Notebook)"]
       
       T1_Core --> T1_Solvers
+      T1_Heuristics --> T1_Solvers
       T1_Solvers --> T1_Exp
+      T1_Solvers --> T1_UI
       T1_Exp --> T1_NB
+      T1_UI --> T1_NB
     end
 
     subgraph Task2["Task 2: Tank Battle Game (Adversarial Search)"]
-      T2_Engine["task2.engine\n(GameState, 6 Actions, Rules, 3-Cell Bullets)"]
-      T2_Agents["task2.agents\n(Minimax, AlphaBeta, Heuristics)"]
-      T2_External["task2.agents.external\n(Rival Group AI Agents)"]
-      T2_Loader["agent_loader.py\n(Dynamic Plugin Loader)"]
-      T2_UI["task2.ui\n(PyGame GUI & Dashboard)"]
-      T2_Exp["task2.experiments\n(4 Configurations Benchmark)"]
+      T2_Engine["task2_tank.engine\n(GameState, 6 Actions, Rules, 3-Cell Bullets)"]
+      T2_Agents["task2_tank.agents\n(Minimax, AlphaBeta, Heuristics, IterativeDeepening)"]
+      T2_Eval["task2_tank.agents.evaluator\n(Zero-Sum TankEvaluator & LOS Raycast)"]
+      T2_External["task2_tank.agents.external\n(Rival Group AI Agents)"]
+      T2_Loader["task2_tank.agent_loader\n(Dynamic External Bot Plugin System)"]
+      T2_UI["task2_tank.ui\n(High-Fidelity PyGame GUI & Visualizer)"]
+      T2_Exp["task2_tank.experiments\n(4 Configurations Benchmark & Tournament)"]
+      T2_NB["tank_battle.ipynb\n(Jupyter Interactive Notebook)"]
       
       T2_Engine <--> T2_Agents
+      T2_Eval --> T2_Agents
       T2_External --> T2_Loader
       T2_Loader --> T2_Agents
       T2_Engine --> T2_UI
       T2_Agents --> T2_UI
       T2_Agents --> T2_Exp
+      T2_Exp --> T2_NB
     end
 
     subgraph Task3["Task 3: Kakuro Puzzle (CSP)"]
-      T3_Puzzles["task3.puzzles\n(5x5 & 9x9 JSON Test Cases)"]
-      T3_CSP["task3.csp\n(Cell, RunConstraint, KakuroCSP)"]
-      T3_Solver["task3.solver\n(Backtracking + AC-3 + MRV/LCV)"]
-      T3_Tracer["task3.solver.tracer\n(Observer Pattern Subject)"]
-      T3_UI["task3.ui\n(Visualizer: Domains, AC3, Backtrack)"]
-      T3_Exp["task3.experiments\n(Correctness, Stability, Effectiveness)"]
+      T3_Puzzles["task3_kakuro.puzzles\n(5x5 & 9x9 JSON Test Cases)"]
+      T3_CSP["task3_kakuro.csp\n(Cell, RunConstraint, KakuroCSP)"]
+      T3_Solver["task3_kakuro.solver\n(Backtracking + AC-3 + MRV/LCV)"]
+      T3_Tracer["task3_kakuro.solver.tracer\n(Observer Pattern Subject)"]
+      T3_UI["task3_kakuro.ui\n(Visualizer: Domains, AC3, Backtrack)"]
+      T3_Exp["task3_kakuro.experiments\n(Correctness, Stability, Effectiveness)"]
       
       T3_Puzzles --> T3_CSP
       T3_CSP --> T3_Solver

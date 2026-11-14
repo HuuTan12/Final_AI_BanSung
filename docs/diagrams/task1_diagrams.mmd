@@ -4,7 +4,9 @@ classDiagram
     +to_var(r, c) int
     +to_coords(var_id) tuple
     +is_valid_solution(queens) bool
+    +count_attacking_pairs(queens) int
     +display(queens) void
+    +plot_board(queens, save_path) void
   }
 
   class ConstraintGenerator {
@@ -47,6 +49,20 @@ classDiagram
     -_get_conflicted_variables(state) tuple
   }
 
+  class BacktrackingSolver {
+    -bool find_all
+    -int max_cases
+    +solve(n) SolverResult
+    +find_all_solutions(n) list
+    +solve_steps(n) generator
+  }
+
+  class StepMinConflictsSolver {
+    -VariableSelector heuristic
+    -int max_steps
+    +solve_steps(n) generator
+  }
+
   class VariableSelector {
     <<abstract / Strategy>>
     +select_variable(conflicted_vars, conflict_counts)* int
@@ -75,12 +91,24 @@ classDiagram
     +export_to_table() str
   }
 
+  class NQueensPygameApp {
+    -int n
+    -str algorithm
+    +run() void
+    +step() void
+    +reset() void
+  }
+
   ConstraintGenerator o-- NQueensProblem
   BaseSolver <|-- Glucose3SATSolver
   BaseSolver <|-- MinConflictsSolver
+  BaseSolver <|-- BacktrackingSolver
   VariableSelector <|-- RandomSelector
   VariableSelector <|-- MaxConflictSelector
   VariableSelector <|-- HybridTabuSelector
   MinConflictsSolver o-- VariableSelector
+  StepMinConflictsSolver o-- VariableSelector
   Glucose3SATSolver ..> ConstraintGenerator
   BenchmarkRunner ..> BaseSolver
+  NQueensPygameApp ..> BaseSolver
+  NQueensPygameApp ..> StepMinConflictsSolver

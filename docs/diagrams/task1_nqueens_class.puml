@@ -14,7 +14,9 @@ package "task1_nqueens.core" {
         + to_var(r: int, c: int) : int
         + to_coords(var_id: int) : Tuple[int, int]
         + is_valid_solution(queen_positions: List[int]) : bool
+        + count_attacking_pairs(queen_positions: List[int]) : int
         + display(queen_positions: List[int]) : void
+        + plot_board(queens: List[int], save_path: str) : void
     }
 
     class ConstraintGenerator {
@@ -62,6 +64,22 @@ package "task1_nqueens.solvers" {
         - _get_conflicted_variables(state: List[int]) : Tuple[List[int], List[int]]
     }
 
+    class BacktrackingSolver {
+        - find_all : bool
+        - max_cases : Optional[int]
+        + __init__(find_all: bool, max_cases: Optional[int])
+        + solve(n: int) : SolverResult
+        + find_all_solutions(n: int) : List[List[int]]
+        + solve_steps(n: int) : Generator
+    }
+
+    class StepMinConflictsSolver {
+        - heuristic : VariableSelector
+        - max_steps : int
+        + __init__(heuristic: VariableSelector, max_steps: int)
+        + solve_steps(n: int) : Generator
+    }
+
     abstract class VariableSelector <<Strategy>> {
         + {abstract} select_variable(conflicted_vars: List[int], conflict_counts: List[int]) : int
     }
@@ -96,19 +114,36 @@ package "task1_nqueens.experiments" {
     }
 }
 
+package "task1_nqueens.ui" {
+    class NQueensPygameApp {
+        - n : int
+        - algorithm : str
+        - board_pixels : int
+        + __init__(n: int, algorithm: str)
+        + run() : void
+        + step() : void
+        + reset() : void
+    }
+}
+
 ' Relationships
 ConstraintGenerator o-- NQueensProblem : "phân tích & sinh mệnh đề"
 BaseSolver <|-- Glucose3SATSolver : kế thừa
 BaseSolver <|-- MinConflictsSolver : kế thừa
+BaseSolver <|-- BacktrackingSolver : kế thừa
 Glucose3SATSolver ..> ConstraintGenerator : sử dụng CNF
 Glucose3SATSolver ..> SolverResult : trả về
 MinConflictsSolver ..> SolverResult : trả về
+BacktrackingSolver ..> SolverResult : trả về
 
 VariableSelector <|-- RandomSelector : cài đặt (Baseline)
 VariableSelector <|-- MaxConflictSelector : cài đặt (Đề xuất)
 VariableSelector <|-- HybridTabuSelector : cài đặt (Mở rộng)
 
 MinConflictsSolver o-- VariableSelector : "sử dụng Strategy"
+StepMinConflictsSolver o-- VariableSelector : "sử dụng Strategy"
 BenchmarkRunner ..> BaseSolver : "chạy thực nghiệm"
+NQueensPygameApp ..> BaseSolver : "trực quan hóa"
+NQueensPygameApp ..> StepMinConflictsSolver : "chạy từng bước"
 
 @enduml

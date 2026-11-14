@@ -1,26 +1,14 @@
-"""
-sat_solver.py - N-Queens Solver using Glucose3 from PySAT
-Course: Introduction to Artificial Intelligence (503043)
-Author: Student Group
-Description:
-    Solves the N-Queens problem using the Glucose3 SAT solver from PySAT
-    as required in Task 1 - Req 2 (Lecture 09 - Slide 50).
-"""
-
 import time
 import os
 import sys
 from typing import List, Optional
-
-# Ensure source directory is in sys.path
 _file_dir = os.path.dirname(os.path.abspath(__file__))
-_source_dir = os.path.abspath(os.path.join(_file_dir, "..", ".."))
+_source_dir = os.path.abspath(os.path.join(_file_dir, '..', '..'))
 if _source_dir not in sys.path:
     sys.path.insert(0, _source_dir)
-_task1_dir = os.path.abspath(os.path.join(_file_dir, ".."))
+_task1_dir = os.path.abspath(os.path.join(_file_dir, '..'))
 if _task1_dir not in sys.path:
     sys.path.insert(0, _task1_dir)
-
 try:
     from task1_nqueens.solvers.base_solver import BaseSolver, SolverResult
     from task1_nqueens.core.problem import NQueensProblem
@@ -29,64 +17,35 @@ except ImportError:
     from solvers.base_solver import BaseSolver, SolverResult
     from core.problem import NQueensProblem
     from core.constraints import ConstraintGenerator
-
 from pysat.solvers import Glucose3
 
-
 class Glucose3SATSolver(BaseSolver):
-    """
-    SAT solver implementation utilizing Glucose3 from the PySAT library.
-    """
 
     def __init__(self):
-        super().__init__(name="Glucose3-PySAT")
+        super().__init__(name='Glucose3-PySAT')
 
     def solve(self, n: int) -> SolverResult:
-        """
-        Generates CNF clauses for N-Queens, feeds them to Glucose3,
-        measures execution time, and decodes the satisfying model.
-        """
         problem = NQueensProblem(n)
         generator = ConstraintGenerator(problem)
         clauses = generator.generate_all_cnf()
-
-        # Initialize Glucose3 SAT solver
         solver = Glucose3()
         solver.append_formula(clauses)
-
         start_time = time.perf_counter()
         is_sat = solver.solve()
         elapsed_time = time.perf_counter() - start_time
-
         solution: Optional[List[int]] = None
         if is_sat:
             raw_model = solver.get_model()
             solution = self._decode_model(raw_model, n)
-            
-            # Verify solution correctness
             if not problem.is_valid_solution(solution):
-                raise RuntimeError(f"Error: Solution returned by Glucose3 for N={n} violates N-Queens constraints.")
-
+                raise RuntimeError(f'Error: Solution returned by Glucose3 for N={n} violates N-Queens constraints.')
         solver.delete()
-
-        return SolverResult(
-            solver_name=self.name,
-            n=n,
-            is_solved=bool(is_sat),
-            solution=solution,
-            execution_time=elapsed_time,
-            num_clauses=len(clauses)
-        )
+        return SolverResult(solver_name=self.name, n=n, is_solved=bool(is_sat), solution=solution, execution_time=elapsed_time, num_clauses=len(clauses))
 
     def _decode_model(self, model: List[int], n: int) -> List[int]:
-        """
-        Decodes the positive literals in PySAT truth assignment
-        into queen positions where solution[col] = row.
-        """
         solution = [-1] * n
         for lit in model:
             if lit > 0:
-                # lit = r * n + c + 1
                 idx = lit - 1
                 r = idx // n
                 c = idx % n
