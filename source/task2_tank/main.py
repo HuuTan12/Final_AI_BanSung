@@ -31,7 +31,15 @@ from task2_tank.agent_loader import AgentLoader
 
 
 def get_agent_by_name(name: str, depth: int = 3):
-    """Instantiates search agent, human controller, or proposed algorithm by keyword."""
+    """Instantiates search agent, human controller, or external bot by keyword."""
+    if name.startswith("ext::"):
+        ext_path = name[5:]
+        ext_agent = AgentLoader.load_agent_from_file(ext_path, depth=depth)
+        if ext_agent is not None:
+            return ext_agent
+        print(f"[Warning] Failed to reload external bot '{ext_path}', falling back to Heuristic Alpha-Beta.")
+        return HeuristicAlphaBetaAgent(depth=depth)
+
     name_lower = name.lower()
     if name_lower in ("human", "player", "user"):
         return HumanAgent()
@@ -48,11 +56,11 @@ def get_agent_by_name(name: str, depth: int = 3):
     elif name_lower in ("greedy", "reflex"):
         return GreedyTacticalAgent()
     elif name_lower in ("rival", "external"):
-        try:
-            from task2_tank.agents.external.sample_rival_agent import RivalGroupAgent
-            return RivalGroupAgent()
-        except Exception:
-            return HeuristicAlphaBetaAgent(depth=depth)
+        sample_path = os.path.join(AgentLoader.DEFAULT_EXTERNAL_DIR, "sample_rival_agent.py")
+        ext_agent = AgentLoader.load_agent_from_file(sample_path, depth=depth)
+        if ext_agent is not None:
+            return ext_agent
+        return HeuristicAlphaBetaAgent(depth=depth)
     else:
         print(f"[Warning] Unknown agent '{name}', defaulting to Heuristic Alpha-Beta.")
         return HeuristicAlphaBetaAgent(depth=depth)
@@ -78,6 +86,13 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
         return
 
     gui.set_agent_presets_from_agents(agent0, agent1)
+    prev_k0, prev_d0 = gui.get_selected_agent_key(0)
+    prev_k1, prev_d1 = gui.get_selected_agent_key(1)
+    custom_agents = {}
+    if prev_k0.startswith("custom::"):
+        custom_agents[prev_k0] = agent0
+    if prev_k1.startswith("custom::"):
+        custom_agents[prev_k1] = agent1
 
     print(f"\n=== MATCH READY: {agent0.name} (P0) vs {agent1.name} (P1) | Map: {display_name.upper()} ===")
     print("Click [START] button (or press SPACE/P) in the GUI window to begin the match!")
@@ -91,6 +106,7 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
 
     ai_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     ai_future = None
+    ai_think_start_time = 0.0
 
     running = True
     while running:
@@ -117,10 +133,17 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             ai_future = None
             gui.ai_thinking = False
             gui.ai_thinking_pid = None
+            gui.human_queues = {0: None, 1: None}
             k0, d0 = gui.get_selected_agent_key(0)
             k1, d1 = gui.get_selected_agent_key(1)
-            agent0 = get_agent_by_name(k0, depth=d0)
-            agent1 = get_agent_by_name(k1, depth=d1)
+            if (k0, d0) != (prev_k0, prev_d0):
+                agent0 = custom_agents[k0] if k0 in custom_agents else get_agent_by_name(k0, depth=d0)
+                prev_k0, prev_d0 = k0, d0
+                gui.add_combat_log(f"[MODE] P0 Blue switched to {agent0.name}.", (90, 185, 255))
+            if (k1, d1) != (prev_k1, prev_d1):
+                agent1 = custom_agents[k1] if k1 in custom_agents else get_agent_by_name(k1, depth=d1)
+                prev_k1, prev_d1 = k1, d1
+                gui.add_combat_log(f"[MODE] P1 Red switched to {agent1.name}.", (255, 120, 120))
             print(f"[HUD Switch] P0 updated to '{agent0.name}', P1 updated to '{agent1.name}'")
 
         # Handle in-game map cycling (Key M / N or Map button / badge)
@@ -143,6 +166,8 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.explosions.clear()
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
+            gui.animated_bullets.clear()
+            gui.animated_tank_override.clear()
             gui.reset_match_wait_state()
             gui.update_map_layout(state.width, state.height)
             gui.add_combat_log(f"[MAP] Switched to {display_name.upper()}. Click START to begin.", (245, 190, 35))
@@ -163,6 +188,8 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.explosions.clear()
             gui.muzzle_flashes.clear()
             gui.tracks.clear()
+            gui.animated_bullets.clear()
+            gui.animated_tank_override.clear()
             gui.reset_match_wait_state()
             gui.update_map_layout(state.width, state.height)
             gui.add_combat_log("[RESET] Match reset to initial positions. Click START to begin.", (245, 190, 35))
@@ -173,15 +200,29 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
         # Handle undo step (Key U or Undo button)
         if gui.undo_requested:
             gui.undo_requested = False
+            gui.step_requested = False
+            gui.is_paused = True
             ai_future = None
             gui.ai_thinking = False
             gui.ai_thinking_pid = None
+            gui.explosions.clear()
+            gui.muzzle_flashes.clear()
+            gui.animated_bullets.clear()
+            gui.animated_tank_override.clear()
+            gui.human_queues = {0: None, 1: None}
+
             if len(state_history) > 1:
                 state_history.pop()
                 state = state_history[-1].clone()
+                gui.match_started = True
                 gui.update_map_layout(state.width, state.height)
-                print(f"[Control] Undo step: Restored to Cycle {state.game_cycle}, P{state.current_player} turn.")
+                gui.add_combat_log(
+                    f"[UNDO] Rolled back 1 step to Cycle {state.game_cycle}, P{state.current_player}. Press ENTER/SPACE to run.",
+                    (245, 190, 35),
+                )
+                print(f"[Control] Undo step: Restored to Cycle {state.game_cycle}, P{state.current_player} turn (Paused).")
             else:
+                gui.add_combat_log("[UNDO] Already at initial state.", (160, 175, 200))
                 print("[Control] Undo ignored: Already at initial state.")
             gui.render(state, agent0, agent1)
             continue
@@ -193,8 +234,8 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
             gui.render(state, agent0, agent1)
             continue
 
-        # If paused (or waiting for START) and no step requested, render idle frame
-        if gui.is_paused and not gui.step_requested:
+        # If paused (or waiting for START) and no step requested or in-flight AI step, render idle frame
+        if gui.is_paused and not gui.step_requested and ai_future is None:
             gui.render(state, agent0, agent1)
             continue
 
@@ -227,12 +268,15 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
                         continue
 
                 gui.step_requested = False
-                gui.ai_thinking = True
-                gui.ai_thinking_pid = current_pid
+                ai_think_start_time = time.perf_counter()
                 cloned_s = state.clone()
                 ai_future = ai_executor.submit(active_agent.choose_action, cloned_s, current_pid)
+                concurrent.futures.wait([ai_future], timeout=0.025)
 
             if not ai_future.done():
+                if time.perf_counter() - ai_think_start_time >= 0.25:
+                    gui.ai_thinking = True
+                    gui.ai_thinking_pid = current_pid
                 gui.render(state, agent0, agent1)
                 continue
 
@@ -257,7 +301,6 @@ def run_gui_game(agent0, agent1, max_cycles: int = 50, map_name: str = "01"):
 
         state = next_state
         state_history.append(state.clone())
-        gui.render(state, agent0, agent1)
 
     ai_executor.shutdown(wait=False)
 

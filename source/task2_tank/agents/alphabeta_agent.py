@@ -43,23 +43,26 @@ class AlphaBetaAgent(BaseAgent):
         if len(legal_actions) == 1:
             return legal_actions[0]
 
+        # Sort root actions once so ties resolve consistently without mis-picking fail-low cutoffs
+        ordered_actions = sorted(
+            legal_actions,
+            key=lambda a: TankEvaluator.action_tactical_priority(state, a, player_id),
+            reverse=True
+        )
+
         best_score = float("-inf")
-        best_action = legal_actions[0]
+        best_action = ordered_actions[0]
         alpha = float("-inf")
         beta = float("inf")
 
-        for action in legal_actions:
+        for action in ordered_actions:
             self.stats.explored_nodes += 1
             successor = GameRules.apply_action(state, action)
             score = self._min_value(successor, self.depth - 1, alpha, beta, player_id)
 
-            if score > best_score + 1e-4:
+            if score > best_score:
                 best_score = score
                 best_action = action
-            elif abs(score - best_score) <= 1e-4:
-                if TankEvaluator.action_tactical_priority(state, action, player_id) > TankEvaluator.action_tactical_priority(state, best_action, player_id):
-                    best_score = score
-                    best_action = action
             alpha = max(alpha, best_score)
 
         self.stats.execution_time = time.perf_counter() - start_time

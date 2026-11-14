@@ -111,12 +111,16 @@ class NQueensGUI:
         self.candidate_col: int = -1
         self.candidate_row: int = -1
         self.candidate_type: str = ""          # "SAFE", "CONFLICT", "BACKTRACK", "EVAL_ROWS"
+        self.candidate_conflicts: List[Tuple[int, int]] = []
         self.row_conflicts_eval: List[int] = []
         self.active_conflicts: List[Tuple[int, int]] = []
+        self.hovered_cell: Optional[Tuple[int, int]] = None
+        self.search_finished: bool = False
 
         # All-solutions browser state
         self.cached_all_solutions: List[List[int]] = []
         self.current_solution_idx: int = 0
+        self.browser_generator = None
 
         # CNF Propositional Logic stats cache
         self.cnf_stats: Dict[str, Any] = {}
@@ -292,12 +296,16 @@ class NQueensGUI:
 
         # 1. Playback Deck (Row 1)
         btn_y = 66
-        col_w = (sb_w - 18) // 4
-        play_lbl = "PAUSE" if self.is_playing else "START / PLAY"
-        self.buttons.append({"id": "btn_play", "label": play_lbl, "rect": pygame.Rect(sb_x, btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_step_back", "label": "< STEP -1", "rect": pygame.Rect(sb_x + (col_w + 6), btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_step_fwd", "label": "STEP +1 >", "rect": pygame.Rect(sb_x + 2 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
-        self.buttons.append({"id": "btn_reset", "label": "RESET", "rect": pygame.Rect(sb_x + 3 * (col_w + 6), btn_y, col_w, 32), "category": "control"})
+        gap = 5
+        play_w = 84
+        other_w = (sb_w - play_w - 4 * gap) // 4
+        reset_w = sb_w - play_w - 3 * other_w - 4 * gap
+        play_lbl = "PAUSE" if self.is_playing else "PLAY"
+        self.buttons.append({"id": "btn_play", "label": play_lbl, "rect": pygame.Rect(sb_x, btn_y, play_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_step_back", "label": "< STEP", "rect": pygame.Rect(sb_x + play_w + gap, btn_y, other_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_step_fwd", "label": "STEP >", "rect": pygame.Rect(sb_x + play_w + gap + (other_w + gap), btn_y, other_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_solve", "label": "SOLVE >>", "rect": pygame.Rect(sb_x + play_w + gap + 2 * (other_w + gap), btn_y, other_w, 32), "category": "control"})
+        self.buttons.append({"id": "btn_reset", "label": "RESET", "rect": pygame.Rect(sb_x + play_w + gap + 3 * (other_w + gap), btn_y, reset_w, 32), "category": "control"})
 
         # 2. Speed Controls (Row 2)
         btn_y += 38
@@ -365,6 +373,10 @@ class NQueensGUI:
         self.buttons.append({"id": "btn_sol_prev", "label": "< PREV", "rect": pygame.Rect(sb_x + half_w + 8, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
         self.buttons.append({"id": "btn_sol_next", "label": "NEXT >", "rect": pygame.Rect(sb_x + half_w + 8 + nav_w + 6, browser_y, nav_w, algo_btn_h), "category": "browser_nav"})
 
+    def _is_board_complete_and_valid(self) -> bool:
+        """Returns True iff all N columns have a queen placed and zero attacking pairs exist."""
+        return len(self.board) == self.n and all(r != -1 for r in self.board) and self.current_conflicts == 0
+
     def _init_solver(self) -> None:
         """Initializes or resets the active solver generator and state."""
         self.board = [-1] * self.n
@@ -379,17 +391,22 @@ class NQueensGUI:
         self.candidate_col = -1
         self.candidate_row = -1
         self.candidate_type = ""
+        self.candidate_conflicts.clear()
         self.row_conflicts_eval.clear()
         self.active_conflicts.clear()
+        self.browser_generator = None
+        self.search_finished = False
         self.start_perf_time = time.perf_counter()
         self.execution_time_ms = 0.0
 
         self._update_cnf_stats()
+        if PYGAME_AVAILABLE and pygame.display.get_init():
+            pygame.display.set_caption(f"N-Queens AI Tactical Visualizer (N={self.n}) - Propositional Logic & Local Search")
 
         if self.algorithm_mode == "BACKTRACKING":
             solver = BacktrackingSolver(find_all=True)
             self.step_generator = solver.solve_step_generator(self.n, find_all=True)
-            self.status_message = f"Initialized Backtracking for N={self.n}. Click PLAY to observe step-by-step search."
+            self.status_message = f"Initialized Backtracking for N={self.n}. Press PLAY [SPACE] or SOLVE [F]."
 
         elif self.algorithm_mode == "MIN_CONFLICTS_MAX":
             gen = StepMinConflictsGenerator(heuristic=MaxConflictSelector(), max_steps=1500)
@@ -415,7 +432,7 @@ class NQueensGUI:
         elif self.algorithm_mode == "MANUAL":
             self.board = [-1] * self.n
             self.step_generator = None
-            self.status_message = "Interactive Sandbox: Click any chessboard square to place or remove queens!"
+            self.status_message = "Manual Sandbox: L-Click place/move, R-Click remove, [F] Quick Solve!"
 
         # Save initial state in history
         self._record_history()
@@ -427,8 +444,8 @@ class NQueensGUI:
         if res.is_solved and res.solution is not None:
             final_sol = res.solution
             self.execution_time_ms = res.execution_time * 1000.0
-            self.solutions_found = 1
-            self.cases_explored = len(sat_solver.problem_clauses) if hasattr(sat_solver, "problem_clauses") else self.cnf_stats["theoretical_total"]
+            self.solutions_found = 0
+            self.cases_explored = res.num_clauses if getattr(res, "num_clauses", 0) else self.cnf_stats["theoretical_total"]
 
             # Create generator to place queens one by one
             def sat_gen():
@@ -451,29 +468,157 @@ class NQueensGUI:
                 }
 
             self.step_generator = sat_gen()
-            self.status_message = f"Glucose3 PySAT solved in {self.execution_time_ms:.3f} ms. Click PLAY to watch animated placement."
+            self.status_message = f"Glucose3 PySAT solved in {self.execution_time_ms:.3f} ms. Click PLAY or SOLVE to place queens."
         else:
             self.step_generator = None
+            self.search_finished = True
             self.status_message = f"Glucose3 SAT could not find a valid solution for N={self.n}."
 
+    def _fetch_more_browser_solutions(self, limit: int = 100) -> int:
+        """Lazily pulls up to `limit` additional solutions from the browser generator."""
+        if self.browser_generator is None:
+            return 0
+        added = 0
+        while added < limit:
+            try:
+                step = next(self.browser_generator)
+                if step.event_type == "SOLUTION":
+                    self.cached_all_solutions.append(list(step.board))
+                    added += 1
+            except StopIteration:
+                self.browser_generator = None
+                break
+        return added
+
     def _load_all_solutions_for_browser(self) -> None:
-        """Computes and caches all valid solutions for fast interactive browsing."""
+        """Computes or lazily caches valid solutions without freezing the UI on large N."""
         t0 = time.perf_counter()
         bt = BacktrackingSolver(find_all=True)
-        self.cached_all_solutions = bt.find_all_solutions(self.n)
+        self.cached_all_solutions = []
+        self.browser_generator = None
+        self.current_solution_idx = 0
+
+        if self.n <= 10:
+            self.cached_all_solutions = bt.find_all_solutions(self.n)
+        else:
+            self.browser_generator = bt.solve_step_generator(self.n, find_all=True, yield_conflicts=False)
+            self._fetch_more_browser_solutions(limit=25)
+
         t_elapsed = (time.perf_counter() - t0) * 1000.0
         self.execution_time_ms = t_elapsed
         self.solutions_found = len(self.cached_all_solutions)
-        self.current_solution_idx = 0
 
         if self.cached_all_solutions:
             self.board = list(self.cached_all_solutions[0])
             known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-            self.status_message = (f"Loaded all {len(self.cached_all_solutions)} valid configurations "
-                                   f"in {t_elapsed:.1f} ms. Viewing solution 1/{known_total}.")
+            more_hint = " (lazy streaming)" if self.browser_generator is not None else ""
+            self.status_message = (
+                f"Loaded {len(self.cached_all_solutions):,} solutions in {t_elapsed:.1f} ms{more_hint}. "
+                f"Viewing 1 / {known_total:,}."
+            )
         else:
             self.board = [-1] * self.n
             self.status_message = "No valid solutions exist for this configuration."
+
+    def _browser_next_solution(self) -> bool:
+        """Advances to the next cached/streamed solution in Browser mode."""
+        if not self.cached_all_solutions:
+            return False
+        if self.current_solution_idx + 1 >= len(self.cached_all_solutions) and self.browser_generator is not None:
+            self._fetch_more_browser_solutions(limit=25)
+            self.solutions_found = len(self.cached_all_solutions)
+
+        self.current_solution_idx = (self.current_solution_idx + 1) % len(self.cached_all_solutions)
+        self.board = list(self.cached_all_solutions[self.current_solution_idx])
+        known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
+        total_str = f"{known_total:,}" if isinstance(known_total, int) else str(known_total)
+        self.status_message = (
+            f"Viewing solution {self.current_solution_idx + 1:,} / {total_str} "
+            f"(Use Left/Right or Mouse Wheel)."
+        )
+        self._update_conflicts()
+        self._record_history()
+        return True
+
+    def _browser_prev_solution(self) -> bool:
+        """Navigates to the previous solution in Browser mode, wrapping cleanly."""
+        if not self.cached_all_solutions:
+            return False
+        self.current_solution_idx = (self.current_solution_idx - 1) % len(self.cached_all_solutions)
+        self.board = list(self.cached_all_solutions[self.current_solution_idx])
+        known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
+        total_str = f"{known_total:,}" if isinstance(known_total, int) else str(known_total)
+        self.status_message = (
+            f"Viewing solution {self.current_solution_idx + 1:,} / {total_str} "
+            f"(Use Left/Right or Mouse Wheel)."
+        )
+        self._update_conflicts()
+        self._record_history()
+        return True
+
+    def _toggle_play(self) -> None:
+        """Toggles playback; restarts automatically if current search already finished."""
+        if self.algorithm_mode == "MANUAL":
+            self.is_playing = False
+            self.status_message = "Manual Sandbox: Click squares to place queens or press SOLVE [F]."
+            return
+
+        if not self.is_playing:
+            if self.search_finished and self.history_index >= len(self.step_history) - 1:
+                self._init_solver()
+            self.is_playing = True
+        else:
+            self.is_playing = False
+
+    def solve_instant(self) -> bool:
+        """Fast-forwards current mode to the next solution or solves Manual board via SAT."""
+        self.is_playing = False
+
+        if self.algorithm_mode == "BROWSER":
+            return self._browser_next_solution()
+
+        if self.algorithm_mode == "MANUAL":
+            sat_solver = Glucose3SATSolver()
+            res = sat_solver.solve(self.n)
+            if res.is_solved and res.solution is not None:
+                self.board = list(res.solution)
+                self.execution_time_ms = res.execution_time * 1000.0
+                self.cases_explored = res.num_clauses if getattr(res, "num_clauses", 0) else self.cnf_stats["theoretical_total"]
+                self.solutions_found = 1
+                self.candidate_col = -1
+                self.candidate_row = -1
+                self.candidate_type = "SOLVED"
+                self.candidate_conflicts.clear()
+                self.row_conflicts_eval.clear()
+                self._update_conflicts()
+                self.status_message = f"Solved N={self.n} sandbox board via Glucose3 SAT in {self.execution_time_ms:.3f} ms!"
+                self._record_history()
+                return True
+            self.status_message = f"Could not solve N={self.n} via Glucose3 SAT."
+            return False
+
+        if self.search_finished and self.history_index >= len(self.step_history) - 1:
+            self._init_solver()
+
+        if self.step_generator is None:
+            return False
+
+        t_start = time.perf_counter()
+        max_iters = 50000 if self.algorithm_mode == "BACKTRACKING" else 5000
+        for _ in range(max_iters):
+            adv = self.step_forward()
+            if not adv:
+                return False
+            if self.algorithm_mode == "BACKTRACKING" and self.candidate_type in ("SOLUTION", "FINISHED"):
+                return True
+            if self.algorithm_mode.startswith("MIN_CONFLICTS") and self.candidate_type in ("SOLVED", "TIMEOUT"):
+                return True
+            if self.algorithm_mode == "SAT" and self.candidate_type == "SOLVED":
+                return True
+            if (time.perf_counter() - t_start) > 1.2:
+                self.status_message = "Fast-forward paused at time budget. Click SOLVE again to continue."
+                return True
+        return True
 
     def _record_history(self) -> None:
         """Saves current frame snapshot to enable step-by-step backward undo."""
@@ -488,8 +633,10 @@ class NQueensGUI:
             "candidate_col": self.candidate_col,
             "candidate_row": self.candidate_row,
             "candidate_type": self.candidate_type,
+            "candidate_conflicts": list(self.candidate_conflicts),
             "row_conflicts_eval": list(self.row_conflicts_eval),
             "status_message": self.status_message,
+            "search_finished": self.search_finished,
         }
         if self.history_index < len(self.step_history) - 1:
             self.step_history = self.step_history[: self.history_index + 1]
@@ -501,17 +648,16 @@ class NQueensGUI:
         if self.history_index < len(self.step_history) - 1:
             self.history_index += 1
             self._restore_history(self.history_index)
+            if self.algorithm_mode == "BACKTRACKING" and self.candidate_type in ("SOLUTION", "FINISHED"):
+                self.is_playing = False
+            elif self.algorithm_mode.startswith("MIN_CONFLICTS") and self.candidate_type in ("SOLVED", "TIMEOUT"):
+                self.is_playing = False
+            elif self.algorithm_mode == "SAT" and self.candidate_type == "SOLVED":
+                self.is_playing = False
             return True
 
         if self.algorithm_mode == "BROWSER":
-            if self.cached_all_solutions:
-                self.current_solution_idx = (self.current_solution_idx + 1) % len(self.cached_all_solutions)
-                self.board = list(self.cached_all_solutions[self.current_solution_idx])
-                known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-                self.status_message = f"Viewing solution case {self.current_solution_idx + 1} / {known_total}."
-                self._update_conflicts()
-                self._record_history()
-            return True
+            return self._browser_next_solution()
 
         if self.step_generator is None:
             return False
@@ -519,7 +665,8 @@ class NQueensGUI:
         try:
             step = next(self.step_generator)
             self.steps_count += 1
-            self.execution_time_ms = (time.perf_counter() - self.start_perf_time) * 1000.0
+            if self.algorithm_mode != "SAT":
+                self.execution_time_ms = (time.perf_counter() - self.start_perf_time) * 1000.0
 
             if self.algorithm_mode == "BACKTRACKING":
                 self.board = list(step.board)
@@ -529,16 +676,26 @@ class NQueensGUI:
                 self.candidate_col = step.col
                 self.candidate_row = step.row
                 self.candidate_type = step.event_type
+                self.candidate_conflicts = list(getattr(step, "conflicts", []))
                 self.status_message = step.message
 
-                if step.event_type == "FINISHED":
+                if step.event_type == "SOLUTION":
                     self.is_playing = False
+                    known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, "?")
+                    self.status_message = (
+                        f"Solution #{self.solutions_found}/{known_total} found! "
+                        f"Press SPACE/PLAY or SOLVE to continue to next solution."
+                    )
+                elif step.event_type == "FINISHED":
+                    self.is_playing = False
+                    self.search_finished = True
 
             elif self.algorithm_mode.startswith("MIN_CONFLICTS"):
                 self.board = list(step.board)
                 self.candidate_col = step.selected_col
                 self.candidate_row = step.chosen_row
                 self.candidate_type = step.event_type
+                self.candidate_conflicts.clear()
                 self.row_conflicts_eval = list(step.row_conflicts)
                 self.current_conflicts = step.total_conflicts
                 self.restarts_count = step.restarts_count
@@ -548,27 +705,36 @@ class NQueensGUI:
                 if step.event_type == "SOLVED":
                     self.solutions_found = 1
                     self.is_playing = False
+                    self.search_finished = True
                 elif step.event_type == "TIMEOUT":
                     self.is_playing = False
+                    self.search_finished = True
 
             elif self.algorithm_mode == "SAT":
                 self.board = list(step["board"])
                 self.candidate_col = step["col"]
                 self.candidate_row = step["row"]
+                self.candidate_type = step["event"]
+                self.candidate_conflicts.clear()
                 self.status_message = step["msg"]
                 if step["event"] == "SOLVED":
+                    self.solutions_found = 1
                     self.is_playing = False
+                    self.search_finished = True
 
             self._update_conflicts()
             self._record_history()
             return True
         except StopIteration:
             self.is_playing = False
+            self.search_finished = True
             self.status_message = "Search algorithm completed the entire exploration tree."
             return False
 
     def step_backward(self) -> bool:
-        """Rewinds the visualizer one step back in history."""
+        """Rewinds the visualizer one step back in history (or previous solution in Browser mode)."""
+        if self.algorithm_mode == "BROWSER" and self.history_index == 0:
+            return self._browser_prev_solution()
         if self.history_index > 0:
             self.history_index -= 1
             self._restore_history(self.history_index)
@@ -589,8 +755,10 @@ class NQueensGUI:
             self.candidate_col = snap["candidate_col"]
             self.candidate_row = snap["candidate_row"]
             self.candidate_type = snap["candidate_type"]
+            self.candidate_conflicts = list(snap.get("candidate_conflicts", []))
             self.row_conflicts_eval = list(snap["row_conflicts_eval"])
             self.status_message = snap["status_message"]
+            self.search_finished = snap.get("search_finished", False)
             self._update_conflicts()
 
     def _update_conflicts(self) -> None:
@@ -611,36 +779,59 @@ class NQueensGUI:
                     conflicts_count += 1
         self.current_conflicts = conflicts_count
 
-    def handle_click(self, pos: Tuple[int, int]) -> None:
+    def handle_click(self, pos: Tuple[int, int], button: int = 1) -> None:
         """Handles mouse clicks on buttons and chessboard squares."""
         x, y = pos
 
-        # Check UI Buttons
-        for btn in self.buttons:
-            if btn["rect"].collidepoint(x, y):
-                self._on_button_press(btn)
+        # Check UI Buttons (Left-click)
+        if button == 1:
+            for btn in self.buttons:
+                if btn["rect"].collidepoint(x, y):
+                    self._on_button_press(btn)
+                    return
+
+        # Check Chessboard Square Click (Pause running search or Manual placement / sandbox)
+        if self.board_rect.collidepoint(x, y):
+            if self.is_playing:
+                self.is_playing = False
+                self.status_message = "Paused by board click. Click PLAY to resume or click again to edit."
                 return
 
-        # Check Chessboard Square Click (Manual placement / sandbox)
-        if self.board_rect.collidepoint(x, y):
             rel_x = x - self.board_rect.x
             rel_y = y - self.board_rect.y
             col = rel_x // self.cell_size
             row = rel_y // self.cell_size
 
             if 0 <= col < self.n and 0 <= row < self.n:
-                if self.board[col] == row:
-                    # Remove queen
-                    self.board[col] = -1
-                    self.status_message = f"Removed Queen from square ({row}, {col})."
+                if button == 3:
+                    if self.board[col] != -1:
+                        self.board[col] = -1
+                        col_lbl = chr(ord('A') + col) if self.n <= 26 else str(col)
+                        self.status_message = f"Removed Queen from Column {col_lbl}."
+                    else:
+                        return
                 else:
-                    # Place or move queen
-                    self.board[col] = row
-                    self.status_message = f"Placed Queen onto square ({row}, {col})."
+                    if self.board[col] == row:
+                        self.board[col] = -1
+                        self.status_message = f"Removed Queen from square ({row}, {col})."
+                    else:
+                        self.board[col] = row
+                        self.status_message = f"Placed Queen onto square ({row}, {col})."
 
                 self.algorithm_mode = "MANUAL"
                 self.step_generator = None
+                self.search_finished = False
+                self.candidate_col = -1
+                self.candidate_row = -1
+                self.candidate_type = ""
+                self.candidate_conflicts.clear()
+                self.row_conflicts_eval.clear()
                 self._update_conflicts()
+                if self._is_board_complete_and_valid():
+                    self.solutions_found = 1
+                    self.status_message = f"Solved! All {self.n} queens placed safely with 0 conflicts!"
+                else:
+                    self.solutions_found = 0
                 self._record_history()
 
     def _on_button_press(self, btn: Dict[str, Any]) -> None:
@@ -648,8 +839,8 @@ class NQueensGUI:
         bid = btn["id"]
 
         if bid == "btn_play":
-            self.is_playing = not self.is_playing
-            btn["label"] = "PAUSE" if self.is_playing else "START / PLAY"
+            self._toggle_play()
+            btn["label"] = "PAUSE" if self.is_playing else "PLAY"
 
         elif bid == "btn_step_fwd":
             self.is_playing = False
@@ -658,6 +849,9 @@ class NQueensGUI:
         elif bid == "btn_step_back":
             self.is_playing = False
             self.step_backward()
+
+        elif bid == "btn_solve":
+            self.solve_instant()
 
         elif bid == "btn_reset":
             self.is_playing = False
@@ -695,16 +889,20 @@ class NQueensGUI:
                 self._init_solver()
 
         elif bid == "btn_sol_prev":
-            if self.cached_all_solutions:
-                self.current_solution_idx = (self.current_solution_idx - 1) % len(self.cached_all_solutions)
-                self.board = list(self.cached_all_solutions[self.current_solution_idx])
-                known_total = KNOWN_SOLUTIONS_COUNT.get(self.n, len(self.cached_all_solutions))
-                self.status_message = f"Viewing solution case {self.current_solution_idx + 1} / {known_total}."
-                self._update_conflicts()
-                self._record_history()
+            self.is_playing = False
+            if self.algorithm_mode != "BROWSER":
+                self.algorithm_mode = "BROWSER"
+                self._init_solver()
+            else:
+                self._browser_prev_solution()
 
         elif bid == "btn_sol_next":
-            self.step_forward()
+            self.is_playing = False
+            if self.algorithm_mode != "BROWSER":
+                self.algorithm_mode = "BROWSER"
+                self._init_solver()
+            else:
+                self._browser_next_solution()
 
     def run(self) -> None:
         """Main graphical event loop running at 60 FPS."""
@@ -724,19 +922,44 @@ class NQueensGUI:
                     self._update_layout()
                     self._init_buttons()
 
+                elif event.type == pygame.MOUSEMOTION:
+                    mx, my = event.pos
+                    if self.board_rect.collidepoint(mx, my):
+                        c = (mx - self.board_rect.x) // self.cell_size
+                        r = (my - self.board_rect.y) // self.cell_size
+                        self.hovered_cell = (r, c) if (0 <= r < self.n and 0 <= c < self.n) else None
+                    else:
+                        self.hovered_cell = None
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    if self.algorithm_mode == "BROWSER":
+                        self.is_playing = False
+                        if event.y < 0:
+                            self._browser_next_solution()
+                        elif event.y > 0:
+                            self._browser_prev_solution()
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left click
-                        self.handle_click(event.pos)
+                    if event.button in (1, 3):
+                        self.handle_click(event.pos, button=event.button)
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        self.is_playing = not self.is_playing
-                    elif event.key in (pygame.K_RIGHT, pygame.K_s):
+                        self._toggle_play()
+                    elif event.key in (pygame.K_RIGHT, pygame.K_s, pygame.K_d):
                         self.is_playing = False
-                        self.step_forward()
+                        if self.algorithm_mode == "BROWSER":
+                            self._browser_next_solution()
+                        elif event.key != pygame.K_d:
+                            self.step_forward()
                     elif event.key in (pygame.K_LEFT, pygame.K_a):
                         self.is_playing = False
-                        self.step_backward()
+                        if self.algorithm_mode == "BROWSER":
+                            self._browser_prev_solution()
+                        else:
+                            self.step_backward()
+                    elif event.key in (pygame.K_f, pygame.K_RETURN, pygame.K_KP_ENTER):
+                        self.solve_instant()
                     elif event.key == pygame.K_r:
                         self.is_playing = False
                         self._init_solver()
@@ -758,7 +981,7 @@ class NQueensGUI:
                 steps_per_frame = 8 if self.speed_multiplier == 50 else 1
                 for _ in range(steps_per_frame):
                     adv = self.step_forward()
-                    if not adv:
+                    if not adv or not self.is_playing:
                         break
                 self.last_step_time = cur_time
 
@@ -780,16 +1003,19 @@ class NQueensGUI:
         # 2. Draw Candidate Rows & Conflict Numbers
         self._draw_candidate_overlays()
 
-        # 3. Draw Laser Attack Lines and impact particles
+        # 3. Draw Hover Preview (Coordinate & Manual Sandbox Safety Check)
+        self._draw_hover_preview()
+
+        # 4. Draw Laser Attack Lines and impact particles
         self._draw_conflict_lasers()
 
-        # 4. Draw Queen Pieces (PNG assets or vector crowns)
+        # 5. Draw Queen Pieces (PNG assets or vector crowns)
         self._draw_queens()
 
-        # 5. Draw Right Sidebar & Telemetry HUD
+        # 6. Draw Right Sidebar & Telemetry HUD
         self._draw_sidebar()
 
-        # 6. Draw Bottom Status Banner
+        # 7. Draw Bottom Status Banner
         self._draw_status_bar()
 
     def _draw_board(self) -> None:
@@ -875,6 +1101,29 @@ class NQueensGUI:
                 pygame.draw.rect(self.screen, badge_bg, b_rect, border_radius=3)
                 self.screen.blit(badge_lbl, (b_rect.centerx - badge_lbl.get_width() // 2, b_rect.centery - badge_lbl.get_height() // 2))
 
+            # Highlight optimal destination row and draw directional arrow in Min-Conflicts
+            if self.algorithm_mode.startswith("MIN_CONFLICTS") and 0 <= self.candidate_row < self.n:
+                dest_rect = pygame.Rect(bx + c * cs + 2, by + self.candidate_row * cs + 2, cs - 4, cs - 4)
+                pygame.draw.rect(self.screen, self.COLOR_SUCCESS_GREEN, dest_rect, 3, border_radius=4)
+
+                cur_r = self.board[c]
+                if self.candidate_type == "EVAL_ROWS" and 0 <= cur_r < self.n and cur_r != self.candidate_row:
+                    cx_mid = bx + c * cs + cs // 2
+                    start_y = by + cur_r * cs + cs // 2
+                    end_y = by + self.candidate_row * cs + cs // 2
+                    step_dir = 1 if end_y > start_y else -1
+                    tip_y = end_y - step_dir * max(6, cs // 5)
+                    shaft_start = start_y + step_dir * max(6, cs // 5)
+                    arrow_col = (56, 225, 160)
+                    pygame.draw.line(self.screen, arrow_col, (cx_mid, shaft_start), (cx_mid, tip_y), 3)
+                    head_sz = max(5, cs // 8)
+                    pts = [
+                        (cx_mid, tip_y + step_dir * head_sz),
+                        (cx_mid - head_sz, tip_y - step_dir * (head_sz // 2)),
+                        (cx_mid + head_sz, tip_y - step_dir * (head_sz // 2)),
+                    ]
+                    pygame.draw.polygon(self.screen, arrow_col, pts)
+
         # In Backtracking: show candidate cell evaluation
         elif self.candidate_col >= 0 and self.candidate_row >= 0:
             c = self.candidate_col
@@ -903,19 +1152,96 @@ class NQueensGUI:
                 self.screen.blit(surf, rect.topleft)
                 pygame.draw.rect(self.screen, (230, 126, 34), rect, 3)
 
-    def _draw_conflict_lasers(self) -> None:
-        """Draws glowing laser attack beams with flare particles connecting conflicting queens."""
-        if not self.active_conflicts:
+    def _draw_hover_preview(self) -> None:
+        """Draws hover cell frame, coordinate label, and Manual Sandbox conflict/safe preview."""
+        if self.is_playing:
             return
 
         bx = self.board_rect.x
         by = self.board_rect.y
         cs = self.cell_size
 
-        pulse = 0.5 + 0.5 * math.sin(self.anim_tick * 0.2)
+        mx, my = pygame.mouse.get_pos()
+        if self.board_rect.collidepoint(mx, my):
+            c = (mx - bx) // cs
+            r = (my - by) // cs
+        elif self.hovered_cell is not None:
+            r, c = self.hovered_cell
+        else:
+            return
+
+        if not (0 <= r < self.n and 0 <= c < self.n):
+            return
+
+        rect = pygame.Rect(bx + c * cs, by + r * cs, cs, cs)
+        col_letter = chr(ord('A') + c) if self.n <= 26 else str(c)
+        coord_text = f"{col_letter}{self.n - r}"
+
+        if self.algorithm_mode == "MANUAL" and self.board[c] != r:
+            attackers = [
+                (self.board[c2], c2)
+                for c2 in range(self.n)
+                if c2 != c and self.board[c2] != -1
+                and (self.board[c2] == r or abs(self.board[c2] - r) == abs(c2 - c))
+            ]
+            if attackers:
+                tint = pygame.Surface((cs, cs), pygame.SRCALPHA)
+                tint.fill((235, 65, 65, 80))
+                self.screen.blit(tint, rect.topleft)
+                pygame.draw.rect(self.screen, (240, 70, 70), rect, 2)
+                p_dest = (rect.centerx, rect.centery)
+                for r_att, c_att in attackers:
+                    p_att = (bx + c_att * cs + cs // 2, by + r_att * cs + cs // 2)
+                    # Draw dashed warning line
+                    dist = math.hypot(p_dest[0] - p_att[0], p_dest[1] - p_att[1])
+                    steps = max(1, int(dist // 10))
+                    for s in range(0, steps, 2):
+                        t0 = s / steps
+                        t1 = min(1.0, (s + 1) / steps)
+                        q0 = (int(p_att[0] + (p_dest[0] - p_att[0]) * t0), int(p_att[1] + (p_dest[1] - p_att[1]) * t0))
+                        q1 = (int(p_att[0] + (p_dest[0] - p_att[0]) * t1), int(p_att[1] + (p_dest[1] - p_att[1]) * t1))
+                        pygame.draw.line(self.screen, (255, 110, 110), q0, q1, 2)
+            else:
+                tint = pygame.Surface((cs, cs), pygame.SRCALPHA)
+                tint.fill((46, 213, 115, 75))
+                self.screen.blit(tint, rect.topleft)
+                pygame.draw.rect(self.screen, self.COLOR_SUCCESS_GREEN, rect, 2)
+                ghost_img = self.scaled_assets.get("queen_safe")
+                if ghost_img:
+                    ghost = ghost_img.copy()
+                    ghost.set_alpha(115)
+                    self.screen.blit(ghost, (rect.centerx - ghost.get_width() // 2, rect.centery - ghost.get_height() // 2))
+        else:
+            pygame.draw.rect(self.screen, self.COLOR_QUEEN_CYAN, rect, 2)
+
+        lbl = self.fonts["badge"].render(coord_text, True, (255, 255, 255))
+        pill = pygame.Rect(rect.x + 3, rect.y + 3, lbl.get_width() + 6, lbl.get_height() + 2)
+        pygame.draw.rect(self.screen, (16, 22, 34), pill, border_radius=3)
+        self.screen.blit(lbl, (pill.x + 3, pill.y + 1))
+
+    def _draw_conflict_lasers(self) -> None:
+        """Draws glowing laser attack beams with flare particles connecting conflicting queens."""
+        has_candidate_lasers = (
+            self.candidate_type == "CONFLICT"
+            and bool(self.candidate_conflicts)
+            and 0 <= self.candidate_col < self.n
+            and 0 <= self.candidate_row < self.n
+        )
+        if not self.active_conflicts and not has_candidate_lasers:
+            return
+
+        bx = self.board_rect.x
+        by = self.board_rect.y
+        cs = self.cell_size
+
         flare_asset = self.scaled_assets.get("spark_flare")
 
-        for (r1, c1), (r2, c2) in self.active_conflicts:
+        laser_pairs = list(self.active_conflicts)
+        if has_candidate_lasers:
+            for r_att, c_att in self.candidate_conflicts:
+                laser_pairs.append(((r_att, c_att), (self.candidate_row, self.candidate_col)))
+
+        for (r1, c1), (r2, c2) in laser_pairs:
             p1 = (bx + c1 * cs + cs // 2, by + r1 * cs + cs // 2)
             p2 = (bx + c2 * cs + cs // 2, by + r2 * cs + cs // 2)
 
@@ -947,6 +1273,8 @@ class NQueensGUI:
             conflicted_cols.add(c1)
             conflicted_cols.add(c2)
 
+        is_solved = self._is_board_complete_and_valid()
+
         for c in range(self.n):
             r = self.board[c]
             if r == -1:
@@ -965,7 +1293,7 @@ class NQueensGUI:
             elif c == self.candidate_col:
                 asset_key = "queen_candidate"
                 theme = "CYAN"
-            elif self.current_conflicts == 0 and self.solutions_found > 0:
+            elif is_solved:
                 asset_key = "queen_safe"
                 theme = "GREEN"
             else:
@@ -1082,7 +1410,7 @@ class NQueensGUI:
         # Sync PLAY/PAUSE button label dynamically
         for btn in self.buttons:
             if btn["id"] == "btn_play":
-                btn["label"] = "PAUSE" if self.is_playing else "START / PLAY"
+                btn["label"] = "PAUSE" if self.is_playing else "PLAY"
             self._draw_button(btn)
 
         # Section Card 1: Clean Search Telemetry Grid (Req 2 & 3)
@@ -1136,6 +1464,10 @@ class NQueensGUI:
             bg_color = (22, 135, 85) if not is_hover else (30, 165, 105)
             border_color = (46, 204, 113)
             text_color = (255, 255, 255)
+        elif bid == "btn_solve":
+            bg_color = (30, 112, 142) if is_hover else (22, 82, 108)
+            border_color = (86, 204, 248) if is_hover else (46, 164, 214)
+            text_color = (255, 255, 255)
         elif is_active:
             bg_color = (36, 110, 185)
             border_color = (64, 169, 255)
@@ -1152,7 +1484,7 @@ class NQueensGUI:
         pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
         pygame.draw.rect(self.screen, border_color, rect, 1, border_radius=5)
 
-        lbl_surf = self.fonts["body_bold" if (is_active or bid == "btn_play") else "body"].render(btn["label"], True, text_color)
+        lbl_surf = self.fonts["body_bold" if (is_active or bid in ("btn_play", "btn_solve")) else "body"].render(btn["label"], True, text_color)
         self.screen.blit(lbl_surf, (rect.centerx - lbl_surf.get_width() // 2, rect.centery - lbl_surf.get_height() // 2))
 
     def _draw_diagnostics_card(self, x: int, y: int, w: int) -> None:
@@ -1280,10 +1612,10 @@ class NQueensGUI:
         pygame.draw.line(self.screen, self.COLOR_CARD_BORDER, (0, bar_y), (bar_w, bar_y), 1)
 
         # Status badge
-        if self.current_conflicts == 0 and self.solutions_found > 0:
+        if self._is_board_complete_and_valid():
             badge_text = "SOLVED"
             badge_col = self.COLOR_SUCCESS_GREEN
-        elif self.current_conflicts > 0:
+        elif self.current_conflicts > 0 or (self.candidate_type == "CONFLICT" and self.candidate_conflicts):
             badge_text = "CONFLICT"
             badge_col = self.COLOR_QUEEN_CONFLICT
         elif self.is_playing:
@@ -1296,6 +1628,11 @@ class NQueensGUI:
         badge_surf = self.fonts["badge"].render(f"[{badge_text}]", True, badge_col)
         self.screen.blit(badge_surf, (15, bar_y + 6))
 
-        # Status narrative message
+        # Status narrative message (clipped cleanly before sidebar boundary)
+        msg_x = 105
+        max_msg_w = max(80, bar_w - msg_x - 10)
         msg_surf = self.fonts["body"].render(self.status_message, True, self.COLOR_TEXT)
-        self.screen.blit(msg_surf, (105, bar_y + 6))
+        if msg_surf.get_width() > max_msg_w:
+            self.screen.blit(msg_surf, (msg_x, bar_y + 6), area=pygame.Rect(0, 0, max_msg_w, msg_surf.get_height()))
+        else:
+            self.screen.blit(msg_surf, (msg_x, bar_y + 6))

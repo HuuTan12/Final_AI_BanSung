@@ -31,6 +31,7 @@ from task2_tank.engine.rules import GameRules
 from task2_tank.agents.base_agent import BaseAgent
 from task2_tank.agents.evaluator import TankEvaluator
 from task2_tank.agents.human_agent import HumanAgent
+from task2_tank.agent_loader import AgentLoader
 
 
 # Available algorithm presets for player selection
@@ -69,8 +70,12 @@ class TankGameGUI:
 
         # Agent switching flags
         self.agent_changed: bool = False
+        self.presets: List[Tuple[str, str]] = list(AGENT_PRESETS)
+        self._load_discovered_external_presets()
         self.p0_algo_idx: int = 1     # Default: Heuristic Alpha-Beta
         self.p1_algo_idx: int = 3     # Default: Alpha-Beta Pruning
+        self.last_p0_ai_idx: int = 1
+        self.last_p1_ai_idx: int = 3
         self.p0_depth: int = 3
         self.p1_depth: int = 3
 
@@ -84,7 +89,9 @@ class TankGameGUI:
         # Interactive buttons
         self.buttons: List[Dict[str, Any]] = []
         self.speed_buttons: List[Dict[str, Any]] = []
+        self.mode_buttons: List[Dict[str, Any]] = []
         self.dpad_buttons: List[Dict[str, Any]] = []
+        self.gameover_buttons: List[Dict[str, Any]] = []
         self.start_banner_rect: Optional[pygame.Rect] = None
 
         # Visual FX state
@@ -96,11 +103,12 @@ class TankGameGUI:
         # Sub-step animated tank & bullet state
         self.animated_tank_override: Dict[int, Tuple[int, int, Direction]] = {}
         self.animated_bullets: List[Dict[str, Any]] = []
+        self.animating_owner_id: Optional[int] = None
 
         # Clean combat event log feed
         self.combat_logs: List[Dict[str, Any]] = [
             {"text": "[READY] Match loaded. Click [START] button on the right panel to begin.", "color": (46, 204, 113)},
-            {"text": "[RULES] Tank: 6 HP | Base: 9 HP | Wall: 1-3 HP | Bullet: 3 cells/turn", "color": (160, 180, 210)},
+            {"text": "[RULES] Tank: 6 HP | Base: 9 HP | Wall: 1-3 HP | Bullet: 3 cells/cycle", "color": (160, 180, 210)},
         ]
 
         # Telemetry & Evaluator
@@ -116,8 +124,8 @@ class TankGameGUI:
         self.ai_thinking: bool = False
         self.ai_thinking_pid: Optional[int] = None
 
-        # Fluid continuous key-holding & arcade driving controls
-        self.last_human_action_time: float = 0.0
+        # Fluid continuous key-holding & arcade driving controls (per-player cooldowns)
+        self.last_human_action_time: Dict[int, float] = {0: 0.0, 1: 0.0}
         self.human_repeat_delay: float = 0.16
         self.active_game_state: Optional[GameState] = None
         self.quit_requested: bool = False
@@ -403,6 +411,15 @@ class TankGameGUI:
             {"id": "speed_4",  "label": "4.0x Turbo",  "rect": pygame.Rect(pad_x + 3 * (sw_btn + 6), s_y, sw_btn, 25), "val": 4.0},
         ]
 
+        # Row 3: 1-Click Mode Presets (1P vs AI, 2P PvP, AI vs AI)
+        m_y = s_y + 30
+        mw_btn = (card_w - 12) // 3
+        self.mode_buttons = [
+            {"id": "mode_1p",     "label": "1P vs AI", "rect": pygame.Rect(pad_x, m_y, mw_btn, 24), "mode": "1P"},
+            {"id": "mode_2p",     "label": "2P PvP",   "rect": pygame.Rect(pad_x + mw_btn + 6, m_y, mw_btn, 24), "mode": "2P"},
+            {"id": "mode_aivsai", "label": "AI vs AI", "rect": pygame.Rect(pad_x + 2 * (mw_btn + 6), m_y, card_w - 2 * (mw_btn + 6), 24), "mode": "AI"},
+        ]
+
     def set_speed(self, multiplier: float) -> None:
         """Sets game execution speed multiplier."""
         self.speed_multiplier = float(multiplier)
@@ -420,11 +437,14 @@ class TankGameGUI:
         if len(self.combat_logs) > 4:
             self.combat_logs.pop(0)
 
-    def add_hit_effect(self, x: int, y: int) -> None:
+    def add_hit_effect(self, x: int, y: int, damaged: bool = True) -> None:
         """Triggers an animated explosion effect at cell (x, y)."""
         self.explosions.append({"x": x, "y": y, "frame": 0, "max_frames": 12})
-        self.damage_flashes[f"{x},{y}"] = 10
-        self.add_combat_log(f"[HIT] Target hit at cell ({x}, {y}) (-1 HP)", (255, 130, 90))
+        if damaged:
+            self.damage_flashes[f"{x},{y}"] = 10
+            self.add_combat_log(f"[HIT] Target hit at cell ({x}, {y}) (-1 HP)", (255, 130, 90))
+        else:
+            self.add_combat_log(f"[SHIELD] Own base blocked friendly shot at ({x}, {y})", (140, 190, 255))
 
     def add_muzzle_flash(self, x: int, y: int, direction: Direction) -> None:
         """Triggers a muzzle flash effect when tank fires."""
@@ -436,24 +456,66 @@ class TankGameGUI:
         if len(self.tracks) > 60:
             self.tracks.pop(0)
 
+    def _load_discovered_external_presets(self) -> None:
+        """Adds extra .py external agent files discovered in agents/external/ into the selector."""
+        for fpath in AgentLoader.discover_external_agent_files():
+            if os.path.basename(fpath) == "sample_rival_agent.py":
+                continue
+            ext_key = f"ext::{os.path.abspath(fpath)}"
+            if any(k == ext_key for k, _ in self.presets):
+                continue
+            bot = AgentLoader.load_agent_from_file(fpath)
+            if bot is not None:
+                self.presets.append((ext_key, f"Ext: {bot.name[:22]}"))
+
+    def _find_preset_idx(self, key: str) -> int:
+        """Finds preset index matching `key` in self.presets."""
+        for idx, (preset_key, _) in enumerate(self.presets):
+            if preset_key == key:
+                return idx
+        return 1
+
+    def _record_last_ai_indices(self) -> None:
+        """Remembers the latest non-human algorithm preset selected for each player."""
+        if self.presets[self.p0_algo_idx][0] != "human":
+            self.last_p0_ai_idx = self.p0_algo_idx
+        if self.presets[self.p1_algo_idx][0] != "human":
+            self.last_p1_ai_idx = self.p1_algo_idx
+
+    def _apply_mode_preset(self, mode: str) -> None:
+        """Applies a 1-click game mode preset: '1P', '2P', or 'AI'."""
+        self._record_last_ai_indices()
+        human_idx = self._find_preset_idx("human")
+        if mode == "1P":
+            self.p0_algo_idx = human_idx
+            if self.presets[self.p1_algo_idx][0] == "human":
+                hab_idx = self._find_preset_idx("heuristic_alphabeta")
+                self.p1_algo_idx = self.last_p1_ai_idx if self.presets[self.last_p1_ai_idx][0] != "human" else hab_idx
+        elif mode == "2P":
+            self.p0_algo_idx = human_idx
+            self.p1_algo_idx = human_idx
+        elif mode == "AI":
+            if self.presets[self.p0_algo_idx][0] == "human":
+                hab_idx = self._find_preset_idx("heuristic_alphabeta")
+                self.p0_algo_idx = self.last_p0_ai_idx if self.presets[self.last_p0_ai_idx][0] != "human" else hab_idx
+            if self.presets[self.p1_algo_idx][0] == "human":
+                ab_idx = self._find_preset_idx("alphabeta")
+                self.p1_algo_idx = self.last_p1_ai_idx if self.presets[self.last_p1_ai_idx][0] != "human" else ab_idx
+
+        self._record_last_ai_indices()
+        self.human_queues = {0: None, 1: None}
+        self.agent_changed = True
+
     def _route_human_key(
         self,
         key: int,
         current_pid: int,
         p0_is_human: bool,
         p1_is_human: bool
-    ) -> None:
+    ) -> bool:
         """
-        Routes keyboard actions cleanly for 1-Human vs AI or 2-Human PvP:
-        - In 2-Human PvP (p0_is_human and p1_is_human):
-          * Player 0 (Blue) uses Left Keyboard: W/A/S/D to move, SPACE/F to Fire, Q/X to Stay.
-          * Player 1 (Red) uses Right Keyboard: Arrow Keys to move, [/] (or Numpad 0 / Right-Ctrl) to Fire,
-            [.] (or Numpad .) to Stay. These keys sit directly above/next to the arrow cluster on both
-            full-size and laptop keyboards, so the right hand never has to leave the arrows.
-          * Each player's input goes into their own queue (human_queues[0] or human_queues[1]) so simultaneous
-            inputs never collide or get lost!
-        - In 1-Human vs AI:
-          * The human player can use EITHER WASD or Arrow keys, SPACE/F or [/] to Fire, Q/X or [.] to Stay.
+        Routes keyboard actions cleanly for 1-Human vs AI or 2-Human PvP.
+        Returns True if the key mapped to a valid control for an active human player.
         """
         both_humans = p0_is_human and p1_is_human
 
@@ -475,36 +537,46 @@ class TankGameGUI:
             pygame.K_DOWN: Action.MOVE_DOWN,
             pygame.K_LEFT: Action.MOVE_LEFT,
             pygame.K_RIGHT: Action.MOVE_RIGHT,
-            pygame.K_SLASH: Action.FIRE,       # [/]  - directly above the arrow cluster
-            pygame.K_KP0: Action.FIRE,         # [Numpad 0] - for full-size keyboards
-            pygame.K_RCTRL: Action.FIRE,       # [Right Ctrl] - next to LEFT arrow on laptops
-            pygame.K_PERIOD: Action.STAY,      # [.]  - right next to [/]
+            pygame.K_SLASH: Action.FIRE,       # [/]
+            pygame.K_KP0: Action.FIRE,         # [Numpad 0]
+            pygame.K_RCTRL: Action.FIRE,       # [Right Ctrl]
+            pygame.K_RSHIFT: Action.FIRE,      # [Right Shift]
+            pygame.K_RETURN: Action.FIRE,      # [Enter]
+            pygame.K_KP_ENTER: Action.FIRE,    # [Numpad Enter]
+            pygame.K_PERIOD: Action.STAY,      # [.]
             pygame.K_KP_PERIOD: Action.STAY,   # [Numpad .]
+            pygame.K_COMMA: Action.STAY,       # [,]
+            pygame.K_BACKSLASH: Action.STAY,   # [\]
         }
 
         if both_humans:
             if key in p0_map:
                 self.human_queues[0] = p0_map[key]
+                return True
             elif key in p1_map:
                 self.human_queues[1] = p1_map[key]
-        else:
-            target_pid = 0 if p0_is_human else (1 if p1_is_human else current_pid)
+                return True
+        elif p0_is_human or p1_is_human:
+            target_pid = 0 if p0_is_human else 1
             if key in p0_map:
                 self.human_queues[target_pid] = p0_map[key]
+                return True
             elif key in p1_map:
                 self.human_queues[target_pid] = p1_map[key]
+                return True
+        return False
 
     def get_queued_human_action(self, pid: int) -> Optional[Action]:
         """Retrieves and clears the queued action for human player `pid`."""
         if self.human_queues.get(pid) is not None:
             act = self.human_queues[pid]
             self.human_queues[pid] = None
-            self.last_human_action_time = time.perf_counter()
+            self.last_human_action_time[pid] = time.perf_counter()
             return act
         if self.human_action_queued is not None:
             act = self.human_action_queued
             self.human_action_queued = None
-            self.last_human_action_time = time.perf_counter()
+            self.last_human_action_time[pid] = time.perf_counter()
             return act
         return None
 
@@ -516,14 +588,15 @@ class TankGameGUI:
     ) -> Optional[Action]:
         """
         Polls continuously held keys for smooth, fluid tank driving without key mashing.
-        Enforces a balanced repeat cooldown (~160ms) so movement feels arcade-smooth.
+        Enforces a balanced per-player repeat cooldown (~160ms) so single taps move 1 cell
+        while holding drives smoothly.
         """
         if not self.match_started or self.is_paused:
             return None
 
         now = time.perf_counter()
         repeat_interval = 0.16 / max(0.5, self.speed_multiplier)
-        if now - self.last_human_action_time < repeat_interval:
+        if now - self.last_human_action_time.get(current_pid, 0.0) < repeat_interval:
             return None
 
         keys = pygame.key.get_pressed()
@@ -532,31 +605,31 @@ class TankGameGUI:
         # Dedicated P0 left keys
         if (current_pid == 0 and p0_is_human) or (not both_humans and p0_is_human):
             if keys[pygame.K_w]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_UP
             if keys[pygame.K_s]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_DOWN
             if keys[pygame.K_a]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_LEFT
             if keys[pygame.K_d]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_RIGHT
 
         # Dedicated P1 right keys
         if (current_pid == 1 and p1_is_human) or (not both_humans and p1_is_human):
             if keys[pygame.K_UP]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_UP
             if keys[pygame.K_DOWN]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_DOWN
             if keys[pygame.K_LEFT]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_LEFT
             if keys[pygame.K_RIGHT]:
-                self.last_human_action_time = now
+                self.last_human_action_time[current_pid] = now
                 return Action.MOVE_RIGHT
 
         # In 1-Human vs AI, allow arrow keys for P0 or WASD for P1 as well
@@ -564,19 +637,58 @@ class TankGameGUI:
             target_pid = 0 if p0_is_human else 1
             if current_pid == target_pid:
                 if keys[pygame.K_UP] or keys[pygame.K_w]:
-                    self.last_human_action_time = now
+                    self.last_human_action_time[current_pid] = now
                     return Action.MOVE_UP
                 if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                    self.last_human_action_time = now
+                    self.last_human_action_time[current_pid] = now
                     return Action.MOVE_DOWN
                 if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                    self.last_human_action_time = now
+                    self.last_human_action_time[current_pid] = now
                     return Action.MOVE_LEFT
                 if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                    self.last_human_action_time = now
+                    self.last_human_action_time[current_pid] = now
                     return Action.MOVE_RIGHT
 
         return None
+
+    def _queue_battlefield_click(
+        self,
+        mx: int,
+        my: int,
+        button: int,
+        target_pid: int
+    ) -> None:
+        """Queues a movement, stay, or fire action from a battlefield mouse click."""
+        if button == 3:
+            self.human_queues[target_pid] = Action.FIRE
+            return
+        if button == 1 and self.active_game_state and target_pid in self.active_game_state.tanks:
+            t = self.active_game_state.tanks[target_pid]
+            if t.is_alive:
+                cx = mx // self.cell_size
+                cy = my // self.cell_size
+                if cx == t.x and cy == t.y:
+                    self.human_queues[target_pid] = Action.STAY
+                elif cx == t.x and cy == t.y - 1:
+                    self.human_queues[target_pid] = Action.MOVE_UP
+                elif cx == t.x and cy == t.y + 1:
+                    self.human_queues[target_pid] = Action.MOVE_DOWN
+                elif cx == t.x - 1 and cy == t.y:
+                    self.human_queues[target_pid] = Action.MOVE_LEFT
+                elif cx == t.x + 1 and cy == t.y:
+                    self.human_queues[target_pid] = Action.MOVE_RIGHT
+                else:
+                    tdx, tdy = t.direction.value
+                    in_line = (tdx != 0 and cy == t.y and (cx - t.x) * tdx > 0) or (tdy != 0 and cx == t.x and (cy - t.y) * tdy > 0)
+                    if in_line:
+                        self.human_queues[target_pid] = Action.FIRE
+                    else:
+                        off_x = cx - t.x
+                        off_y = cy - t.y
+                        if abs(off_x) > abs(off_y):
+                            self.human_queues[target_pid] = Action.MOVE_RIGHT if off_x > 0 else Action.MOVE_LEFT
+                        else:
+                            self.human_queues[target_pid] = Action.MOVE_DOWN if off_y > 0 else Action.MOVE_UP
 
     def handle_events(
         self,
@@ -599,6 +711,7 @@ class TankGameGUI:
         self.map_prev_requested = False
 
         any_human = p0_is_human or p1_is_human or active_player_is_human
+        is_terminal = bool(self.active_game_state and self.active_game_state.is_terminal())
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -608,18 +721,35 @@ class TankGameGUI:
                 if event.key == pygame.K_ESCAPE:
                     return False
                 elif event.key == pygame.K_p:
-                    # Dedicated Pause/Resume hotkey that works in all modes
-                    self.is_paused = not self.is_paused
-                    if not self.is_paused:
-                        self.match_started = True
-                elif event.key == pygame.K_SPACE and (not any_human or not self.match_started or self.is_paused):
-                    # Pressing SPACE when waiting to start or in AI mode toggles Start/Pause
-                    self.is_paused = not self.is_paused
-                    if not self.is_paused:
-                        self.match_started = True
+                    if is_terminal:
+                        self.restart_requested = True
+                    else:
+                        self.is_paused = not self.is_paused
+                        if not self.is_paused:
+                            self.match_started = True
+                elif event.key == pygame.K_SPACE:
+                    if is_terminal:
+                        self.restart_requested = True
+                    elif not any_human or not self.match_started or self.is_paused:
+                        self.is_paused = not self.is_paused
+                        if not self.is_paused:
+                            self.match_started = True
+                            self.add_combat_log("[START] Match running.", (46, 204, 113))
+                    else:
+                        self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
                 elif event.key in (pygame.K_u, pygame.K_z, pygame.K_BACKSPACE):
                     self.undo_requested = True
                     self.is_paused = True
+                    self.step_requested = False
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if is_terminal:
+                        self.restart_requested = True
+                    elif not self.match_started or self.is_paused:
+                        self.is_paused = False
+                        self.match_started = True
+                        self.add_combat_log("[RESUME] Match running.", (46, 204, 113))
+                    elif any_human:
+                        self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
                 elif event.key == pygame.K_r:
                     self.restart_requested = True
                 elif event.key == pygame.K_m and not (p1_is_human and self.match_started and not self.is_paused):
@@ -638,60 +768,54 @@ class TankGameGUI:
                 elif event.key == pygame.K_4:
                     self.set_speed(4.0)
                 else:
-                    # If match is running and human player(s) are active, route movement/fire keys
-                    if any_human and self.match_started and not self.is_paused:
-                        self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
-                    elif not any_human and event.key in (pygame.K_s, pygame.K_RETURN):
+                    if any_human and not is_terminal:
+                        if not self.match_started or self.is_paused:
+                            if self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human):
+                                self.match_started = True
+                                self.is_paused = False
+                                self.add_combat_log("[RESUME] Match running.", (46, 204, 113))
+                        else:
+                            self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
+                    elif (not any_human or not active_player_is_human) and not is_terminal and event.key == pygame.K_s:
                         self.step_requested = True
                         self.is_paused = True
                         self.match_started = True
 
-                # Also handle SPACE for firing when match IS started and not paused
-                if event.key == pygame.K_SPACE and any_human and self.match_started and not self.is_paused:
-                    self._route_human_key(event.key, current_pid, p0_is_human, p1_is_human)
-
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
                 mx, my = event.pos
 
-                # Check Battlefield Click (Direct Tactical Mouse Navigation)
+                # Game Over Modal buttons (click directly on Victory/Draw card)
+                if is_terminal and event.button == 1 and self.gameover_buttons:
+                    for gbtn in self.gameover_buttons:
+                        if gbtn["rect"].collidepoint(mx, my):
+                            gid = gbtn["id"]
+                            if gid == "go_restart":
+                                self.restart_requested = True
+                            elif gid == "go_undo":
+                                self.undo_requested = True
+                                self.is_paused = True
+                                self.step_requested = False
+                            elif gid == "go_next_map":
+                                self.map_requested = True
+                            return True
+
+                # Check floating START banner on battlefield before battlefield actions
+                if event.button == 1 and not self.match_started and not is_terminal and self.start_banner_rect and self.start_banner_rect.collidepoint(mx, my):
+                    self.match_started = True
+                    self.is_paused = False
+                    self.add_combat_log("[START] Match started! Tanks engaging.", (46, 204, 113))
+                    return True
+
+                # Check Battlefield Click (Direct Tactical Mouse Navigation + Auto-Start)
                 if mx < self.board_w and my < self.board_h:
-                    if any_human and self.match_started and not self.is_paused:
+                    if any_human and not is_terminal:
+                        if not self.match_started or self.is_paused:
+                            self.match_started = True
+                            self.is_paused = False
+                            self.add_combat_log("[RESUME] Match running.", (46, 204, 113))
                         target_pid = current_pid if (current_pid == 0 and p0_is_human) or (current_pid == 1 and p1_is_human) else (0 if p0_is_human else 1)
-                        if event.button == 3:
-                            # Right-click anywhere on battlefield = Quick FIRE!
-                            self.human_queues[target_pid] = Action.FIRE
-                            return True
-                        elif event.button == 1:
-                            cx = mx // self.cell_size
-                            cy = my // self.cell_size
-                            if self.active_game_state and target_pid in self.active_game_state.tanks:
-                                t = self.active_game_state.tanks[target_pid]
-                                if t.is_alive:
-                                    if cx == t.x and cy == t.y:
-                                        self.human_queues[target_pid] = Action.STAY
-                                    elif cx == t.x and cy == t.y - 1:
-                                        self.human_queues[target_pid] = Action.MOVE_UP
-                                    elif cx == t.x and cy == t.y + 1:
-                                        self.human_queues[target_pid] = Action.MOVE_DOWN
-                                    elif cx == t.x - 1 and cy == t.y:
-                                        self.human_queues[target_pid] = Action.MOVE_LEFT
-                                    elif cx == t.x + 1 and cy == t.y:
-                                        self.human_queues[target_pid] = Action.MOVE_RIGHT
-                                    else:
-                                        # Check if click is along current line of fire
-                                        tdx, tdy = t.direction.value
-                                        in_line = (tdx != 0 and cy == t.y and (cx - t.x) * tdx > 0) or (tdy != 0 and cx == t.x and (cy - t.y) * tdy > 0)
-                                        if in_line:
-                                            self.human_queues[target_pid] = Action.FIRE
-                                        else:
-                                            # Step towards target cell
-                                            off_x = cx - t.x
-                                            off_y = cy - t.y
-                                            if abs(off_x) > abs(off_y):
-                                                self.human_queues[target_pid] = Action.MOVE_RIGHT if off_x > 0 else Action.MOVE_LEFT
-                                            else:
-                                                self.human_queues[target_pid] = Action.MOVE_DOWN if off_y > 0 else Action.MOVE_UP
-                            return True
+                        self._queue_battlefield_click(mx, my, event.button, target_pid)
+                        return True
 
                 # Top-right Map Badge click (Left-click = Next Map, Right-click = Prev Map)
                 if self.map_badge_rect and self.map_badge_rect.collidepoint(mx, my):
@@ -705,33 +829,33 @@ class TankGameGUI:
                     for btn in self.buttons:
                         if btn["id"] == "next_map" and btn["rect"].collidepoint(mx, my):
                             self.map_prev_requested = True
+                            return True
+                    self._handle_selector_clicks(mx, my, button=3)
                     continue
-
-                # Check floating START banner on battlefield
-                if not self.match_started and self.start_banner_rect and self.start_banner_rect.collidepoint(mx, my):
-                    self.match_started = True
-                    self.is_paused = False
-                    self.add_combat_log("[START] Match started! Tanks engaging.", (46, 204, 113))
-                    return True
 
                 # Top action buttons
                 for btn in self.buttons:
                     if btn["rect"].collidepoint(mx, my):
                         b_id = btn["id"]
                         if b_id == "play_pause":
-                            self.is_paused = not self.is_paused
-                            if not self.is_paused:
-                                self.match_started = True
-                                self.add_combat_log("[START] Match running.", (46, 204, 113))
+                            if is_terminal:
+                                self.restart_requested = True
                             else:
-                                self.add_combat_log("[PAUSE] Match paused.", (245, 190, 35))
+                                self.is_paused = not self.is_paused
+                                if not self.is_paused:
+                                    self.match_started = True
+                                    self.add_combat_log("[START] Match running.", (46, 204, 113))
+                                else:
+                                    self.add_combat_log("[PAUSE] Match paused.", (245, 190, 35))
                         elif b_id == "step":
-                            self.step_requested = True
-                            self.is_paused = True
-                            self.match_started = True
+                            if not is_terminal:
+                                self.step_requested = True
+                                self.is_paused = True
+                                self.match_started = True
                         elif b_id == "undo":
                             self.undo_requested = True
                             self.is_paused = True
+                            self.step_requested = False
                         elif b_id == "restart":
                             self.restart_requested = True
                         elif b_id == "next_map":
@@ -742,26 +866,110 @@ class TankGameGUI:
                     if sbtn["rect"].collidepoint(mx, my):
                         self.set_speed(sbtn["val"])
 
+                # 1-Click Mode Preset buttons
+                for mbtn in self.mode_buttons:
+                    if mbtn["rect"].collidepoint(mx, my):
+                        self._apply_mode_preset(mbtn["mode"])
+
                 # On-screen D-Pad buttons for human
                 for dbtn in self.dpad_buttons:
                     if dbtn["rect"].collidepoint(mx, my):
                         if not self.match_started or self.is_paused:
                             self.match_started = True
                             self.is_paused = False
-                        self.human_queues[current_pid] = dbtn["action"]
+                        target_pid = current_pid if (current_pid == 0 and p0_is_human) or (current_pid == 1 and p1_is_human) else (0 if p0_is_human else 1)
+                        self.human_queues[target_pid] = dbtn["action"]
 
                 # Algorithm & Depth selectors
-                self._handle_selector_clicks(mx, my)
+                self._handle_selector_clicks(mx, my, button=1)
 
         return True
 
-    def _handle_selector_clicks(self, mx: int, my: int) -> None:
-        """Handles clicking algorithm switchers [<] [>] and depth [-] [+]."""
+    def register_external_agent(self, pid: int, file_path: str) -> bool:
+        """Loads an external .py bot file, registers it in self.presets, and assigns it to player pid."""
+        loaded = AgentLoader.load_agent_from_file(file_path)
+        if loaded is None:
+            self.add_combat_log("[EXT] Failed to load bot (must inherit from BaseAgent).", (255, 110, 90))
+            return False
+
+        abs_path = os.path.abspath(file_path)
+        ext_key = f"ext::{abs_path}"
+        label = f"Ext: {loaded.name[:22]}"
+
+        found_idx = None
+        for idx, (k, _) in enumerate(self.presets):
+            if k == ext_key:
+                found_idx = idx
+                self.presets[idx] = (ext_key, label)
+                break
+        if found_idx is None:
+            self.presets.append((ext_key, label))
+            found_idx = len(self.presets) - 1
+
+        if pid == 0:
+            self.p0_algo_idx = found_idx
+        else:
+            self.p1_algo_idx = found_idx
+
+        self._record_last_ai_indices()
+        self.agent_changed = True
+        self.add_combat_log(f"[EXT] P{pid} loaded '{loaded.name}'.", self.COLOR_GOLD)
+        return True
+
+    def _open_external_bot_dialog(self, pid: int) -> None:
+        """Opens a file chooser dialog to import an external student bot (.py) into player pid."""
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:
+                pass
+            picked = filedialog.askopenfilename(
+                title=f"Import External Agent (.py) for Player {pid}",
+                initialdir=AgentLoader.DEFAULT_EXTERNAL_DIR,
+                filetypes=[("Python Agent Files", "*.py"), ("All Files", "*.*")],
+            )
+            root.destroy()
+            if picked:
+                self.register_external_agent(pid, picked)
+        except Exception as exc:
+            self.add_combat_log(f"[EXT] File dialog unavailable ({exc}); use --load_external.", (255, 150, 90))
+
+    def _handle_selector_clicks(self, mx: int, my: int, button: int = 1) -> None:
+        """Handles clicking algorithm switchers [<] [>] / capsule, depth [-] [+], and [+ .PY] load buttons."""
+        n_presets = len(self.presets)
+        if button == 3:
+            if hasattr(self, "p0_algo_capsule_rect") and self.p0_algo_capsule_rect.collidepoint(mx, my):
+                self.p0_algo_idx = (self.p0_algo_idx - 1) % n_presets
+                self._record_last_ai_indices()
+                self.agent_changed = True
+            elif hasattr(self, "p1_algo_capsule_rect") and self.p1_algo_capsule_rect.collidepoint(mx, my):
+                self.p1_algo_idx = (self.p1_algo_idx - 1) % n_presets
+                self._record_last_ai_indices()
+                self.agent_changed = True
+            return
+
+        if hasattr(self, "p0_load_ext_rect") and self.p0_load_ext_rect.collidepoint(mx, my):
+            self._open_external_bot_dialog(0)
+            return
+        elif hasattr(self, "p1_load_ext_rect") and self.p1_load_ext_rect.collidepoint(mx, my):
+            self._open_external_bot_dialog(1)
+            return
+
         if hasattr(self, "p0_algo_prev_rect") and self.p0_algo_prev_rect.collidepoint(mx, my):
-            self.p0_algo_idx = (self.p0_algo_idx - 1) % len(AGENT_PRESETS)
+            self.p0_algo_idx = (self.p0_algo_idx - 1) % n_presets
+            self._record_last_ai_indices()
             self.agent_changed = True
         elif hasattr(self, "p0_algo_next_rect") and self.p0_algo_next_rect.collidepoint(mx, my):
-            self.p0_algo_idx = (self.p0_algo_idx + 1) % len(AGENT_PRESETS)
+            self.p0_algo_idx = (self.p0_algo_idx + 1) % n_presets
+            self._record_last_ai_indices()
+            self.agent_changed = True
+        elif hasattr(self, "p0_algo_capsule_rect") and self.p0_algo_capsule_rect.collidepoint(mx, my):
+            self.p0_algo_idx = (self.p0_algo_idx + 1) % n_presets
+            self._record_last_ai_indices()
             self.agent_changed = True
         elif hasattr(self, "p0_depth_dec_rect") and self.p0_depth_dec_rect.collidepoint(mx, my):
             if self.p0_depth > 1:
@@ -772,10 +980,16 @@ class TankGameGUI:
                 self.p0_depth += 1
                 self.agent_changed = True
         elif hasattr(self, "p1_algo_prev_rect") and self.p1_algo_prev_rect.collidepoint(mx, my):
-            self.p1_algo_idx = (self.p1_algo_idx - 1) % len(AGENT_PRESETS)
+            self.p1_algo_idx = (self.p1_algo_idx - 1) % n_presets
+            self._record_last_ai_indices()
             self.agent_changed = True
         elif hasattr(self, "p1_algo_next_rect") and self.p1_algo_next_rect.collidepoint(mx, my):
-            self.p1_algo_idx = (self.p1_algo_idx + 1) % len(AGENT_PRESETS)
+            self.p1_algo_idx = (self.p1_algo_idx + 1) % n_presets
+            self._record_last_ai_indices()
+            self.agent_changed = True
+        elif hasattr(self, "p1_algo_capsule_rect") and self.p1_algo_capsule_rect.collidepoint(mx, my):
+            self.p1_algo_idx = (self.p1_algo_idx + 1) % n_presets
+            self._record_last_ai_indices()
             self.agent_changed = True
         elif hasattr(self, "p1_depth_dec_rect") and self.p1_depth_dec_rect.collidepoint(mx, my):
             if self.p1_depth > 1:
@@ -789,22 +1003,53 @@ class TankGameGUI:
     def get_selected_agent_key(self, pid: int) -> Tuple[str, int]:
         """Returns (algo_name, depth) for the specified player."""
         if pid == 0:
-            return AGENT_PRESETS[self.p0_algo_idx][0], self.p0_depth
+            return self.presets[self.p0_algo_idx][0], self.p0_depth
         else:
-            return AGENT_PRESETS[self.p1_algo_idx][0], self.p1_depth
+            return self.presets[self.p1_algo_idx][0], self.p1_depth
+
+    def _match_or_register_preset(self, agent: BaseAgent) -> int:
+        """Maps an active BaseAgent instance cleanly to its preset index (registering external bots)."""
+        if getattr(agent, "is_human", False):
+            return self._find_preset_idx("human")
+
+        cls_to_key = {
+            "HumanAgent": "human",
+            "HeuristicAlphaBetaAgent": "heuristic_alphabeta",
+            "IterativeDeepeningAgent": "id_ab",
+            "AlphaBetaAgent": "alphabeta",
+            "HeuristicMinimaxAgent": "heuristic_minimax",
+            "MinimaxAgent": "minimax",
+            "GreedyTacticalAgent": "greedy",
+        }
+        cls_name = type(agent).__name__
+        if cls_name in cls_to_key:
+            return self._find_preset_idx(cls_to_key[cls_name])
+
+        ext_path = getattr(agent, "external_file_path", None)
+        if ext_path:
+            abs_path = os.path.abspath(ext_path)
+            if os.path.basename(abs_path) == "sample_rival_agent.py":
+                return self._find_preset_idx("rival")
+            key = f"ext::{abs_path}"
+            label = f"Ext: {agent.name[:22]}"
+        elif cls_name == "RivalGroupAgent":
+            return self._find_preset_idx("rival")
+        else:
+            key = f"custom::{cls_name}"
+            label = f"Bot: {agent.name[:22]}"
+
+        for idx, (k, _) in enumerate(self.presets):
+            if k == key:
+                return idx
+        self.presets.append((key, label))
+        return len(self.presets) - 1
 
     def set_agent_presets_from_agents(self, agent0: BaseAgent, agent1: BaseAgent) -> None:
-        """Syncs GUI selector indices to match active agents."""
-        for idx, (key, _) in enumerate(AGENT_PRESETS):
-            if getattr(agent0, "is_human", False) and key == "human":
-                self.p0_algo_idx = idx
-            elif key in agent0.name.lower():
-                self.p0_algo_idx = idx
+        """Syncs GUI selector indices to match active agents accurately."""
+        self.p0_algo_idx = self._match_or_register_preset(agent0)
+        self.p1_algo_idx = self._match_or_register_preset(agent1)
 
-            if getattr(agent1, "is_human", False) and key == "human":
-                self.p1_algo_idx = idx
-            elif key in agent1.name.lower():
-                self.p1_algo_idx = idx
+        self._record_last_ai_indices()
 
         if hasattr(agent0, "depth"):
             self.p0_depth = agent0.depth
@@ -838,39 +1083,14 @@ class TankGameGUI:
                     self._route_human_key(event.key, next_pid, p0_h, p1_h)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
                 mx, my = event.pos
-                if mx < self.board_w and my < self.board_h:
+                if mx < self.board_w and my < self.board_h and (p0_h or p1_h):
                     target_pid = next_pid if (next_pid == 0 and p0_h) or (next_pid == 1 and p1_h) else (0 if p0_h else 1)
-                    if event.button == 3:
-                        self.human_queues[target_pid] = Action.FIRE
-                    elif event.button == 1 and self.active_game_state and target_pid in self.active_game_state.tanks:
-                        t = self.active_game_state.tanks[target_pid]
-                        if t.is_alive:
-                            cx = mx // self.cell_size
-                            cy = my // self.cell_size
-                            if cx == t.x and cy == t.y:
-                                self.human_queues[target_pid] = Action.STAY
-                            elif cx == t.x and cy == t.y - 1:
-                                self.human_queues[target_pid] = Action.MOVE_UP
-                            elif cx == t.x and cy == t.y + 1:
-                                self.human_queues[target_pid] = Action.MOVE_DOWN
-                            elif cx == t.x - 1 and cy == t.y:
-                                self.human_queues[target_pid] = Action.MOVE_LEFT
-                            elif cx == t.x + 1 and cy == t.y:
-                                self.human_queues[target_pid] = Action.MOVE_RIGHT
-                            else:
-                                tdx, tdy = t.direction.value
-                                in_line = (tdx != 0 and cy == t.y and (cx - t.x) * tdx > 0) or (tdy != 0 and cx == t.x and (cy - t.y) * tdy > 0)
-                                if in_line:
-                                    self.human_queues[target_pid] = Action.FIRE
-                                else:
-                                    off_x = cx - t.x
-                                    off_y = cy - t.y
-                                    act = (Action.MOVE_RIGHT if off_x > 0 else Action.MOVE_LEFT) if abs(off_x) > abs(off_y) else (Action.MOVE_DOWN if off_y > 0 else Action.MOVE_UP)
-                                    self.human_queues[target_pid] = act
-                else:
+                    self._queue_battlefield_click(mx, my, event.button, target_pid)
+                elif p0_h or p1_h:
+                    target_pid = next_pid if (next_pid == 0 and p0_h) or (next_pid == 1 and p1_h) else (0 if p0_h else 1)
                     for dbtn in self.dpad_buttons:
                         if dbtn["rect"].collidepoint(mx, my):
-                            self.human_queues[next_pid] = dbtn["action"]
+                            self.human_queues[target_pid] = dbtn["action"]
 
         pygame.event.pump()
         return True
@@ -897,13 +1117,13 @@ class TankGameGUI:
         if action == Action.FIRE:
             if tank and tank.is_alive:
                 self.add_muzzle_flash(tank.x, tank.y, tank.direction)
-            GameRules._fire_bullet(next_state, player_id)
-            fire_pause_frames = max(1, int((3 if any_human else 6) / self.speed_multiplier))
+            fire_pause_frames = max(1, int((2 if any_human else 4) / self.speed_multiplier))
             for _ in range(fire_pause_frames):
                 self.render(next_state, agent0, agent1, is_interpolating=True)
                 if not self._pump_during_animation(1 - player_id, agent0, agent1):
                     return next_state
                 self.clock.tick(self.fps)
+            GameRules._fire_bullet(next_state, player_id)
 
         elif action == Action.STAY:
             stay_frames = max(1, int((2 if any_human else 5) / self.speed_multiplier))
@@ -917,8 +1137,10 @@ class TankGameGUI:
             direction = Action.get_move_direction(action)
             if direction and tank and tank.is_alive:
                 old_x, old_y = tank.x, tank.y
+                prev_bullet_count = len([b for b in next_state.bullets if b.is_active])
                 GameRules._move_tank(next_state, player_id, direction)
                 new_x, new_y = tank.x, tank.y
+                stepped_on_bullet = len(next_state.bullets) < prev_bullet_count
 
                 if new_x == old_x and new_y == old_y:
                     # Obstacle bump recoil animation (fast 3-frame tactile feedback)
@@ -952,12 +1174,17 @@ class TankGameGUI:
                         self.clock.tick(self.fps)
 
                     self.animated_tank_override.clear()
+                    if stepped_on_bullet:
+                        self.add_hit_effect(new_x, new_y, damaged=True)
 
-        # Phase 2: Realistic Cell-by-Cell Bullet Flight (3 cells per cycle)
+        # Phase 2: Realistic Cell-by-Cell Bullet Flight (uses exact GameRules collision helper)
         frames_per_cell = max(2, int((5 if any_human else 10) / self.speed_multiplier))
+        self.animating_owner_id = player_id
 
         for _ in range(Bullet.SPEED):
-            active_bullets = [b for b in next_state.bullets if b.is_active]
+            active_bullets = [
+                b for b in next_state.bullets if b.is_active and b.owner_id == player_id
+            ]
             if not active_bullets:
                 break
 
@@ -971,10 +1198,8 @@ class TankGameGUI:
                 target_px = target_x * cs + cs // 2
                 target_py = target_y * cs + cs // 2
                 bullet_paths.append({
-                    "bullet": b,
                     "start": (start_px, start_py),
                     "target": (target_px, target_py),
-                    "target_cell": (target_x, target_y),
                     "dir": b.direction,
                     "owner": b.owner_id
                 })
@@ -994,55 +1219,17 @@ class TankGameGUI:
 
                 self.render(next_state, agent0, agent1, is_interpolating=True)
                 if not self._pump_during_animation(1 - player_id, agent0, agent1):
+                    self.animating_owner_id = None
+                    self.animated_bullets.clear()
                     return next_state
                 self.clock.tick(self.fps)
 
             self.animated_bullets.clear()
+            hits = GameRules.step_bullets_one_cell(next_state, active_owner=player_id)
+            for hx, hy, damaged in hits:
+                self.add_hit_effect(hx, hy, damaged=damaged)
 
-            # Check cell arrival collisions (Wall, Tank, Base)
-            for bp in bullet_paths:
-                b = bp["bullet"]
-                tx, ty = bp["target_cell"]
-                b.x = tx
-                b.y = ty
-
-                if not (0 <= b.x < next_state.width and 0 <= b.y < next_state.height):
-                    b.is_active = False
-                    continue
-
-                hit = False
-                if (b.x, b.y) in next_state.walls:
-                    w = next_state.walls[(b.x, b.y)]
-                    if w.is_alive:
-                        w.take_damage(1)
-                        b.is_active = False
-                        hit = True
-                        self.add_hit_effect(b.x, b.y)
-
-                if not hit:
-                    for target_tank in next_state.tanks.values():
-                        if (target_tank.is_alive and
-                            target_tank.x == b.x and
-                            target_tank.y == b.y and
-                            target_tank.player_id != b.owner_id):
-                            target_tank.take_damage(1)
-                            b.is_active = False
-                            hit = True
-                            self.add_hit_effect(b.x, b.y)
-                            break
-
-                if not hit:
-                    for target_base in next_state.bases.values():
-                        if (target_base.is_alive and
-                            target_base.x == b.x and
-                            target_base.y == b.y):
-                            target_base.take_damage(1)
-                            b.is_active = False
-                            hit = True
-                            self.add_hit_effect(b.x, b.y)
-                            break
-
-            next_state.bullets = [b for b in next_state.bullets if b.is_active]
+        self.animating_owner_id = None
 
         # Animate any hit explosions briefly so the user sees the impact
         if self.explosions:
@@ -1053,14 +1240,9 @@ class TankGameGUI:
                     return next_state
                 self.clock.tick(self.fps)
 
-        # Phase 3: Cleanup dead walls and Advance turn
-        dead_walls = [pos for pos, wall in next_state.walls.items() if not wall.is_alive]
-        for pos in dead_walls:
-            del next_state.walls[pos]
-
-        if player_id == 1:
-            next_state.game_cycle += 1
-        next_state.current_player = 1 - player_id
+        # Phase 3: Cleanup dead walls and advance turn identically to GameRules.apply_action
+        GameRules.finish_turn(next_state, player_id)
+        self.last_human_action_time[player_id] = time.perf_counter()
 
         return next_state
 
@@ -1075,6 +1257,8 @@ class TankGameGUI:
         if not PYGAME_AVAILABLE or self.screen is None:
             return
 
+        self.active_game_state = state
+
         # Adaptive layout safeguard: auto-update layout if state dimensions changed
         if not is_interpolating:
             if getattr(self, "_last_map_dim", None) != (state.width, state.height):
@@ -1087,7 +1271,7 @@ class TankGameGUI:
         self._render_battlefield(state)
 
         # 2. Render Entities (Walls, Bases, Tanks, Foliage)
-        self._render_entities(state, agent0, agent1)
+        self._render_entities(state, agent0, agent1, is_interpolating=is_interpolating)
 
         # 3. Render In-Flight Bullets
         self._render_bullets(state)
@@ -1107,6 +1291,8 @@ class TankGameGUI:
         # 7. Render Game-Over Modal if Terminal
         if state.is_terminal():
             self._render_game_over_banner(state, agent0, agent1)
+        else:
+            self.gameover_buttons.clear()
 
         # 8. Render Redesigned Sidebar HUD
         self._render_hud(state, agent0, agent1)
@@ -1197,7 +1383,7 @@ class TankGameGUI:
             self.screen.blit(line_surf, (log_x + 14, line_y))
             line_y += 20
 
-    def _render_entities(self, state: GameState, agent0: BaseAgent = None, agent1: BaseAgent = None) -> None:
+    def _render_entities(self, state: GameState, agent0: BaseAgent = None, agent1: BaseAgent = None, is_interpolating: bool = False) -> None:
         """Renders bases, walls, tanks (with smooth position override and turn indicator), and foliage."""
         cs = self.cell_size
 
@@ -1302,27 +1488,6 @@ class TankGameGUI:
                 agent_obj = agent0 if pid == 0 else agent1
                 is_human_player = getattr(agent_obj, "is_human", False)
 
-                # AI Thinking Radar / Spinner on AI tank
-                if not is_human_player and self.ai_thinking and self.ai_thinking_pid == pid:
-                    radar_surf = pygame.Surface((cs + 16, cs + 16), pygame.SRCALPHA)
-                    radar_center = (cs // 2 + 8, cs // 2 + 8)
-                    radar_r = cs // 2 + 6
-                    rot_a = (self.anim_tick * 8) % 360
-                    pygame.draw.circle(radar_surf, (*self.COLOR_GOLD, 80), radar_center, radar_r, 2)
-                    for i in range(4):
-                        cur_ang = math.radians(rot_a + i * 90)
-                        prx = radar_center[0] + int(math.cos(cur_ang) * radar_r)
-                        pry = radar_center[1] + int(math.sin(cur_ang) * radar_r)
-                        pygame.draw.circle(radar_surf, self.COLOR_GOLD, (prx, pry), 2)
-                    self.screen.blit(radar_surf, (tx - 8, ty - 8))
-
-                    think_tag = self.font_coord.render("AI THINKING...", True, self.COLOR_GOLD)
-                    tt_w = think_tag.get_width() + 8
-                    tt_rect = pygame.Rect(center_x - tt_w // 2, ty - 17, tt_w, 14)
-                    pygame.draw.rect(self.screen, (16, 22, 34), tt_rect, border_radius=3)
-                    pygame.draw.rect(self.screen, self.COLOR_GOLD, tt_rect, 1, border_radius=3)
-                    self.screen.blit(think_tag, (tt_rect.x + 4, tt_rect.y))
-
                 # Highlight ring (pulsing when it's this tank's turn)
                 ring_surf = pygame.Surface((cs + 8, cs + 8), pygame.SRCALPHA)
                 if is_active_turn and self.match_started:
@@ -1344,14 +1509,14 @@ class TankGameGUI:
                 self._draw_segmented_hp_bar(tx + 4, ty - 2, tank.hp, 6, seg_w=5, seg_h=4, color=t_color)
 
                 # Tactical Laser Aim Line & Mouse Reticle for Human Players
-                if is_human_player and not state.is_terminal():
+                if not is_interpolating and is_human_player and not state.is_terminal():
                     self._check_and_draw_threat_warning(state, tank, pid, cs)
                     if is_active_turn and self.match_started and not self.is_paused:
                         self._draw_tactical_aim_line(state, tank, pid, cs)
                         self._draw_mouse_hover_controls(state, tank, pid, cs)
 
                 # Floating Turn Indicator for Human Players
-                if is_active_turn and self.match_started and is_human_player:
+                if not is_interpolating and is_active_turn and self.match_started and is_human_player:
                     tag_surf = self.font_badge.render(f"P{pid} TURN", True, (255, 255, 255))
                     tw = tag_surf.get_width() + 8
                     th = 15
@@ -1446,8 +1611,8 @@ class TankGameGUI:
             laser_col = (255, 60, 60)
             glow_col = (255, 120, 120)
         elif hit_type == "wall":
-            laser_col = (245, 160, 40)
-            glow_col = (255, 210, 100)
+            laser_col = (56, 189, 248)
+            glow_col = (140, 225, 255)
         elif hit_type == "own_base":
             laser_col = (230, 80, 80)
             glow_col = (255, 140, 140)
@@ -1476,10 +1641,37 @@ class TankGameGUI:
                 pygame.draw.rect(self.screen, (220, 40, 40), b_r, border_radius=2)
                 self.screen.blit(badge, (b_r.x + 3, b_r.y))
 
+    def _is_cell_blocked_for_tank(self, state: GameState, nx: int, ny: int, pid: int) -> bool:
+        """Checks whether cell (nx, ny) is blocked by a wall, base, or opponent tank."""
+        if not (0 <= nx < state.width and 0 <= ny < state.height):
+            return True
+        if (nx, ny) in state.walls and state.walls[(nx, ny)].is_alive:
+            return True
+        if any(b.x == nx and b.y == ny and b.is_alive for b in state.bases.values()):
+            return True
+        opp_tank = state.tanks.get(1 - pid)
+        if opp_tank and opp_tank.is_alive and opp_tank.x == nx and opp_tank.y == ny:
+            return True
+        return False
+
+    def _draw_hover_pill(self, cell_rect: pygame.Rect, text: str, bg_color: Tuple[int, int, int] = (16, 22, 34)) -> None:
+        """Draws a clamped action badge centered over `cell_rect`."""
+        lbl_surf = self.font_coord.render(text, True, (255, 255, 255))
+        lw = lbl_surf.get_width() + 8
+        pill_x = max(4, min(self.board_w - lw - 4, cell_rect.centerx - lw // 2))
+        pill_y = max(4, min(self.board_h - 18, cell_rect.centery - 7))
+        lr = pygame.Rect(pill_x, pill_y, lw, 14)
+        pygame.draw.rect(self.screen, bg_color, lr, border_radius=3)
+        self.screen.blit(lbl_surf, (lr.x + 4, lr.y))
+
     def _draw_mouse_hover_controls(self, state: GameState, tank, pid: int, cs: int) -> None:
         """
-        Renders sleek tactical hover indicators on cells adjacent to the tank,
-        showing available mouse movements and clicks.
+        Renders tactical hover indicators across the battlefield:
+        - Adjacent open cells -> MOVE <DIR>
+        - Adjacent blocked cells -> AIM <DIR> (rotates turret)
+        - Own tank cell -> STAY
+        - Cells along current line of fire -> CLICK TO FIRE!
+        - Remote cells -> STEP <DIR>
         """
         mx, my = pygame.mouse.get_pos()
         if not (0 <= mx < self.board_w and 0 <= my < self.board_h):
@@ -1487,6 +1679,8 @@ class TankGameGUI:
 
         hover_x = mx // cs
         hover_y = my // cs
+        if not (0 <= hover_x < state.width and 0 <= hover_y < state.height):
+            return
 
         neighbors = [
             (tank.x, tank.y - 1, "UP"),
@@ -1498,28 +1692,48 @@ class TankGameGUI:
         team_col = self.COLOR_P0_PRIMARY if pid == 0 else self.COLOR_P1_PRIMARY
 
         for nx, ny, label in neighbors:
-            if 0 <= nx < state.width and 0 <= ny < state.height:
-                if hover_x == nx and hover_y == ny:
-                    cell_rect = pygame.Rect(nx * cs + 2, ny * cs + 2, cs - 4, cs - 4)
-                    h_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
-                    pygame.draw.rect(h_surf, (*team_col, 80), (0, 0, cs - 4, cs - 4), border_radius=4)
-                    self.screen.blit(h_surf, (cell_rect.x, cell_rect.y))
-                    pygame.draw.rect(self.screen, team_col, cell_rect, 2, border_radius=4)
-
-                    lbl_surf = self.font_coord.render(f"MOVE {label}", True, (255, 255, 255))
-                    lw = lbl_surf.get_width() + 6
-                    lr = pygame.Rect(cell_rect.centerx - lw // 2, cell_rect.centery - 7, lw, 14)
-                    pygame.draw.rect(self.screen, (16, 22, 34), lr, border_radius=2)
-                    self.screen.blit(lbl_surf, (lr.x + 3, lr.y))
+            if hover_x == nx and hover_y == ny:
+                cell_rect = pygame.Rect(nx * cs + 2, ny * cs + 2, cs - 4, cs - 4)
+                is_blocked = self._is_cell_blocked_for_tank(state, nx, ny, pid)
+                box_col = team_col
+                h_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
+                pygame.draw.rect(h_surf, (*box_col, 80), (0, 0, cs - 4, cs - 4), border_radius=4)
+                self.screen.blit(h_surf, (cell_rect.x, cell_rect.y))
+                pygame.draw.rect(self.screen, box_col, cell_rect, 2, border_radius=4)
+                pill_text = f"AIM {label}" if is_blocked else f"MOVE {label}"
+                self._draw_hover_pill(cell_rect, pill_text)
+                return
 
         if hover_x == tank.x and hover_y == tank.y:
             cell_rect = pygame.Rect(tank.x * cs + 2, tank.y * cs + 2, cs - 4, cs - 4)
-            pygame.draw.rect(self.screen, self.COLOR_GOLD, cell_rect, 2, border_radius=4)
-            lbl_surf = self.font_coord.render("STAY", True, (255, 255, 255))
-            lw = lbl_surf.get_width() + 6
-            lr = pygame.Rect(cell_rect.centerx - lw // 2, cell_rect.centery - 7, lw, 14)
-            pygame.draw.rect(self.screen, (16, 22, 34), lr, border_radius=2)
-            self.screen.blit(lbl_surf, (lr.x + 3, lr.y))
+            pygame.draw.rect(self.screen, team_col, cell_rect, 2, border_radius=4)
+            self._draw_hover_pill(cell_rect, "STAY")
+            return
+
+        cell_rect = pygame.Rect(hover_x * cs + 2, hover_y * cs + 2, cs - 4, cs - 4)
+        tdx, tdy = tank.direction.value
+        in_line = (tdx != 0 and hover_y == tank.y and (hover_x - tank.x) * tdx > 0) or (tdy != 0 and hover_x == tank.x and (hover_y - tank.y) * tdy > 0)
+        if in_line:
+            fire_col = (235, 65, 65)
+            h_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
+            pygame.draw.rect(h_surf, (*fire_col, 70), (0, 0, cs - 4, cs - 4), border_radius=4)
+            self.screen.blit(h_surf, (cell_rect.x, cell_rect.y))
+            pygame.draw.rect(self.screen, fire_col, cell_rect, 2, border_radius=4)
+            pygame.draw.line(self.screen, fire_col, (cell_rect.centerx - 8, cell_rect.centery), (cell_rect.centerx + 8, cell_rect.centery), 1)
+            pygame.draw.line(self.screen, fire_col, (cell_rect.centerx, cell_rect.centery - 8), (cell_rect.centerx, cell_rect.centery + 8), 1)
+            self._draw_hover_pill(cell_rect, "CLICK TO FIRE!", bg_color=(180, 32, 32))
+        else:
+            off_x = hover_x - tank.x
+            off_y = hover_y - tank.y
+            if abs(off_x) > abs(off_y):
+                step_dir = "RIGHT" if off_x > 0 else "LEFT"
+            else:
+                step_dir = "DOWN" if off_y > 0 else "UP"
+            h_surf = pygame.Surface((cs - 4, cs - 4), pygame.SRCALPHA)
+            pygame.draw.rect(h_surf, (*team_col, 45), (0, 0, cs - 4, cs - 4), border_radius=4)
+            self.screen.blit(h_surf, (cell_rect.x, cell_rect.y))
+            pygame.draw.rect(self.screen, team_col, cell_rect, 1, border_radius=4)
+            self._draw_hover_pill(cell_rect, f"STEP {step_dir}")
 
     def _render_bullets(self, state: GameState) -> None:
         """Renders bullets either at interpolated flight positions or static cell positions."""
@@ -1540,7 +1754,7 @@ class TankGameGUI:
 
                 dx, dy = ab["dir"].value
                 tail_len = int(cs * 0.45)
-                trail_color = (255, 230, 80) if owner == 0 else (255, 100, 80)
+                trail_color = (90, 200, 255) if owner == 0 else (255, 100, 80)
                 pygame.draw.line(self.screen, (*trail_color, 160), (bx, by), (bx - dx * tail_len, by - dy * tail_len), 3)
 
                 if b_key in self.sprites and self.sprites[b_key]:
@@ -1551,9 +1765,10 @@ class TankGameGUI:
                 else:
                     pygame.draw.circle(self.screen, (255, 255, 255), (bx, by), 5)
                     pygame.draw.circle(self.screen, trail_color, (bx, by), 3)
-            return
 
         for bullet in state.bullets:
+            if self.animated_bullets and bullet.owner_id == self.animating_owner_id:
+                continue
             if bullet.is_active:
                 bx = bullet.x * cs + cs // 2
                 by = bullet.y * cs + cs // 2
@@ -1562,7 +1777,7 @@ class TankGameGUI:
                 tail_len = cs // 2
                 tx_end = bx - dx * tail_len
                 ty_end = by - dy * tail_len
-                b_color = (255, 220, 50)
+                b_color = (90, 200, 255) if bullet.owner_id == 0 else (255, 100, 80)
                 pygame.draw.line(self.screen, (*b_color, 140), (bx, by), (tx_end, ty_end), 3)
 
                 b_key = f"bullet_{bullet.owner_id}"
@@ -1874,7 +2089,7 @@ class TankGameGUI:
             status_text = "READY - PRESS START"
             status_c = (22, 135, 85)
         elif self.is_paused:
-            status_text = "PAUSED"
+            status_text = "PAUSED - PRESS ENTER"
             status_c = self.COLOR_AMBER
         elif active_is_human:
             status_text = f"P{state.current_player} HUMAN TURN"
@@ -1997,7 +2212,37 @@ class TankGameGUI:
             lbl = self.font_small.render(sbtn["label"], True, lbl_color)
             self.screen.blit(lbl, (r.centerx - lbl.get_width() // 2, r.centery - lbl.get_height() // 2))
 
-        return y + 33
+        y += 30
+
+        # Row 3: 1-Click Mode Preset buttons (1P vs AI, 2P PvP, AI vs AI)
+        p0_key = self.presets[self.p0_algo_idx % len(self.presets)][0]
+        p1_key = self.presets[self.p1_algo_idx % len(self.presets)][0]
+        if p0_key == "human" and p1_key == "human":
+            cur_mode = "2P"
+        elif p0_key == "human" or p1_key == "human":
+            cur_mode = "1P"
+        else:
+            cur_mode = "AI"
+
+        mw_btn = (width - 12) // 3
+        for idx, mbtn in enumerate(self.mode_buttons):
+            r = mbtn["rect"]
+            r.left = x + idx * (mw_btn + 6)
+            r.width = mw_btn if idx < 2 else (width - 2 * (mw_btn + 6))
+            r.top = y
+            is_active = (cur_mode == mbtn["mode"])
+            is_hover = r.collidepoint(mx, my)
+
+            m_bg = (22, 125, 82) if is_active else ((42, 54, 76) if is_hover else (24, 30, 44))
+            border_c = (72, 225, 140) if is_active else (self.COLOR_GOLD if is_hover else (40, 52, 72))
+            pygame.draw.rect(self.screen, m_bg, r, border_radius=5)
+            pygame.draw.rect(self.screen, border_c, r, 1, border_radius=5)
+
+            lbl_color = (255, 255, 255) if (is_active or is_hover) else self.COLOR_TEXT_DIM
+            lbl = self.font_bold.render(mbtn["label"], True, lbl_color) if is_active else self.font_small.render(mbtn["label"], True, lbl_color)
+            self.screen.blit(lbl, (r.centerx - lbl.get_width() // 2, r.centery - lbl.get_height() // 2))
+
+        return y + 30
 
     def _render_eval_gauge(self, x: int, y: int, width: int) -> int:
         """Renders a clean, uncluttered Heuristic Evaluation Bar."""
@@ -2074,6 +2319,20 @@ class TankGameGUI:
         t_surf = self.font_header.render(role_title, True, primary_color)
         self.screen.blit(t_surf, (x + 44, cy + 3))
 
+        mx, my = pygame.mouse.get_pos()
+
+        # Import external .py bot button (Req 3)
+        ext_btn_rect = pygame.Rect(x + width - 178, cy + 3, 62, 20)
+        if pid == 0:
+            self.p0_load_ext_rect = ext_btn_rect
+        else:
+            self.p1_load_ext_rect = ext_btn_rect
+        ext_hov = ext_btn_rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (45, 58, 82) if ext_hov else (22, 30, 44), ext_btn_rect, border_radius=4)
+        pygame.draw.rect(self.screen, self.COLOR_GOLD if ext_hov else (55, 72, 100), ext_btn_rect, 1, border_radius=4)
+        ext_lbl = self.font_badge.render("+ .PY", True, self.COLOR_GOLD)
+        self.screen.blit(ext_lbl, (ext_btn_rect.centerx - ext_lbl.get_width() // 2, ext_btn_rect.centery - ext_lbl.get_height() // 2))
+
         is_human = getattr(agent, "is_human", False)
         if is_active_turn and self.match_started:
             if not is_human and self.ai_thinking and self.ai_thinking_pid == pid:
@@ -2095,9 +2354,8 @@ class TankGameGUI:
         cy += 32
 
         # 2. Algorithm Selector Row
-        mx, my = pygame.mouse.get_pos()
-        sel_idx = self.p0_algo_idx if pid == 0 else self.p1_algo_idx
-        sel_key, sel_label = AGENT_PRESETS[sel_idx]
+        sel_idx = (self.p0_algo_idx if pid == 0 else self.p1_algo_idx) % len(self.presets)
+        sel_key, sel_label = self.presets[sel_idx]
 
         btn_prev_rect = pygame.Rect(x + 10, cy, 24, 24)
         btn_next_rect = pygame.Rect(x + 242, cy, 24, 24)
@@ -2116,13 +2374,20 @@ class TankGameGUI:
             self.screen.blit(s, (b_rect.centerx - s.get_width() // 2, b_rect.centery - s.get_height() // 2))
 
         algo_capsule_rect = pygame.Rect(x + 38, cy, 200, 24)
-        pygame.draw.rect(self.screen, (16, 22, 34), algo_capsule_rect, border_radius=4)
-        pygame.draw.rect(self.screen, primary_color if is_active_turn else (40, 52, 72), algo_capsule_rect, 1, border_radius=4)
+        if pid == 0:
+            self.p0_algo_capsule_rect = algo_capsule_rect
+        else:
+            self.p1_algo_capsule_rect = algo_capsule_rect
+        cap_hov = algo_capsule_rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (24, 32, 48) if cap_hov else (16, 22, 34), algo_capsule_rect, border_radius=4)
+        cap_border = self.COLOR_GOLD if cap_hov else (primary_color if is_active_turn else (40, 52, 72))
+        pygame.draw.rect(self.screen, cap_border, algo_capsule_rect, 1, border_radius=4)
         algo_surf = self.font_small.render(sel_label[:26], True, (245, 248, 255))
         self.screen.blit(algo_surf, (algo_capsule_rect.centerx - algo_surf.get_width() // 2, algo_capsule_rect.centery - algo_surf.get_height() // 2))
 
         cur_depth = self.p0_depth if pid == 0 else self.p1_depth
-        if sel_key not in ("human", "greedy"):
+        uses_depth = sel_key in ("heuristic_alphabeta", "id_ab", "alphabeta", "heuristic_minimax", "minimax") or hasattr(agent, "depth") or hasattr(agent, "max_depth")
+        if uses_depth and sel_key not in ("human", "greedy"):
             d_x = x + 276
             lbl_dep = self.font_metric_lbl.render("DEPTH:", True, self.COLOR_TEXT_DIM)
             self.screen.blit(lbl_dep, (d_x, cy + 5))
@@ -2146,10 +2411,22 @@ class TankGameGUI:
             val_surf = self.font_metric_val.render(str(cur_depth), True, self.COLOR_GOLD)
             self.screen.blit(val_surf, (d_x + 80, cy + 3))
         else:
+            empty_rect = pygame.Rect(-1, -1, 0, 0)
+            if pid == 0:
+                self.p0_depth_dec_rect = empty_rect
+                self.p0_depth_inc_rect = empty_rect
+            else:
+                self.p1_depth_dec_rect = empty_rect
+                self.p1_depth_inc_rect = empty_rect
+
             mode_pill = pygame.Rect(x + 274, cy, width - 284, 24)
-            pygame.draw.rect(self.screen, (20, 46, 34) if sel_key == "human" else (48, 38, 20), mode_pill, border_radius=4)
-            m_txt = "MANUAL MODE" if sel_key == "human" else "1-PLY GREEDY"
-            m_col = self.COLOR_EMERALD if sel_key == "human" else self.COLOR_GOLD
+            if sel_key == "human":
+                m_bg, m_txt, m_col = (20, 46, 34), "MANUAL MODE", self.COLOR_EMERALD
+            elif sel_key == "greedy":
+                m_bg, m_txt, m_col = (48, 38, 20), "1-PLY GREEDY", self.COLOR_GOLD
+            else:
+                m_bg, m_txt, m_col = (34, 38, 62), "EXTERNAL BOT", self.COLOR_CYAN
+            pygame.draw.rect(self.screen, m_bg, mode_pill, border_radius=4)
             m_surf = self.font_coord.render(m_txt, True, m_col)
             self.screen.blit(m_surf, (mode_pill.centerx - m_surf.get_width() // 2, mode_pill.centery - m_surf.get_height() // 2))
 
@@ -2289,9 +2566,9 @@ class TankGameGUI:
         self.dpad_buttons.append({"action": Action.STAY, "rect": stay_rect})
 
         if both_humans:
-            hint_str = "2-Human PvP: P0 uses [WASD + F/SPACE]  |  P1 uses [Arrows + / .]"
+            hint_str = "P0: [WASD + F/SPACE]  |  P1: [Arrows + / / Enter / .]"
         else:
-            hint_str = "Tips: Hold WASD/Arrows to drive smoothly | Click map cells | R-Click Fire"
+            hint_str = "Hold WASD/Arrows to drive | Click map cells | R-Click Fire"
         hint_surf = self.font_small.render(hint_str, True, self.COLOR_TEXT_DIM)
         self.screen.blit(hint_surf, (x + 12, y + card_h - 22))
 
@@ -2335,7 +2612,7 @@ class TankGameGUI:
         return y + card_h
 
     def _render_game_over_banner(self, state: GameState, agent0: BaseAgent, agent1: BaseAgent) -> None:
-        """Draws victory/draw banner."""
+        """Draws victory/draw banner with interactive Replay, Undo, and Next Map buttons."""
         winner = state.get_winner()
         b_w = self.board_w
         b_h = self.board_h
@@ -2344,8 +2621,8 @@ class TankGameGUI:
         tint.fill((10, 14, 22, 175))
         self.screen.blit(tint, (0, 0))
 
-        card_w = min(380, max(240, b_w - 30))
-        card_h = 160
+        card_w = min(430, max(280, b_w - 24))
+        card_h = 184
         cx = (b_w - card_w) // 2
         cy = (b_h - card_h) // 2
 
@@ -2373,8 +2650,29 @@ class TankGameGUI:
         n_surf = self.font.render(w_name, True, self.COLOR_TEXT)
         self.screen.blit(n_surf, (cx + (card_w - n_surf.get_width()) // 2, cy + 50))
 
-        hint_surf = self.font_small.render("Press [U] to Undo last move   |   [R] to Restart match", True, self.COLOR_GOLD)
-        self.screen.blit(hint_surf, (cx + (card_w - hint_surf.get_width()) // 2, cy + 90))
+        # 3 Interactive Action Buttons on the Game Over Modal
+        mx, my = pygame.mouse.get_pos()
+        self.gameover_buttons = []
+        btn_y = cy + 88
+        btn_h = 34
+        pad_in = 16
+        gap = 8
+        bw = (card_w - 2 * pad_in - 2 * gap) // 3
+        compact = (bw < 110)
+        defs = [
+            ("go_restart",  "AGAIN (R)" if compact else "PLAY AGAIN (R)", (22, 135, 82),  (32, 168, 102), (80, 235, 145)),
+            ("go_undo",     "UNDO (U)",                                     (48, 62, 88),   (66, 84, 118),  self.COLOR_GOLD),
+            ("go_next_map", "MAP (M)" if compact else "NEXT MAP (M)",       (36, 105, 175), (48, 130, 210), (80, 175, 255)),
+        ]
+        for idx, (gid, glbl, bg_norm, bg_hov, b_col) in enumerate(defs):
+            bx = cx + pad_in + idx * (bw + gap)
+            rect = pygame.Rect(bx, btn_y, bw, btn_h)
+            hov = rect.collidepoint(mx, my)
+            pygame.draw.rect(self.screen, bg_hov if hov else bg_norm, rect, border_radius=6)
+            pygame.draw.rect(self.screen, b_col, rect, 1, border_radius=6)
+            lbl_s = self.font_bold.render(glbl, True, (255, 255, 255))
+            self.screen.blit(lbl_s, (rect.centerx - lbl_s.get_width() // 2, rect.centery - lbl_s.get_height() // 2))
+            self.gameover_buttons.append({"id": gid, "rect": rect})
 
-        esc_surf = self.font_small.render("Press [ESC] to Exit", True, self.COLOR_TEXT_DIM)
-        self.screen.blit(esc_surf, (cx + (card_w - esc_surf.get_width()) // 2, cy + 118))
+        esc_surf = self.font_small.render("Press [SPACE/R] Replay  |  [U] Undo  |  [ESC] Exit", True, self.COLOR_TEXT_DIM)
+        self.screen.blit(esc_surf, (cx + (card_w - esc_surf.get_width()) // 2, cy + 142))

@@ -171,15 +171,10 @@ class GameState:
         if not self.is_terminal():
             return None
 
-        # Draw when cycle limit reached and both still alive
-        if self.game_cycle >= self.max_cycles:
-            return -1  # Draw
-
-        # Check if player 1's base or tank was destroyed -> player 0 wins
+        # Check destroyed tank/base first, even if it happened on the final cycle
         p1_base_dead = 1 in self.bases and not self.bases[1].is_alive
         p1_tank_dead = 1 in self.tanks and not self.tanks[1].is_alive
 
-        # Check if player 0's base or tank was destroyed -> player 1 wins
         p0_base_dead = 0 in self.bases and not self.bases[0].is_alive
         p0_tank_dead = 0 in self.tanks and not self.tanks[0].is_alive
 
@@ -192,6 +187,10 @@ class GameState:
             return 1    # Player 1 wins
         if p1_lost:
             return 0    # Player 0 wins
+
+        # Draw when cycle limit reached and both sides still alive
+        if self.game_cycle >= self.max_cycles:
+            return -1  # Draw
 
         return -1  # Fallback draw
 

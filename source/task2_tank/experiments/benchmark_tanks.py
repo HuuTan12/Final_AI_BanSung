@@ -12,9 +12,12 @@ root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if root not in sys.path:
     sys.path.insert(0, root)
 
+from task2_tank.engine.actions import Action, Direction
+from task2_tank.engine.entities import Bullet
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.maps import MapBuilder
 from task2_tank.engine.rules import GameRules
+from task2_tank.agents.evaluator import TankEvaluator
 from task2_tank.agents.minimax_agent import MinimaxAgent
 from task2_tank.agents.alphabeta_agent import AlphaBetaAgent
 from task2_tank.agents.heuristic_minimax_agent import HeuristicMinimaxAgent
@@ -32,13 +35,38 @@ class TankTournament:
         self.single_move_results = []
         self.match_results = []
 
+    def _build_scenarios(self):
+        """Creates varied game scenarios (opening, maze, midgame, endgame) for fair testing."""
+        s_open = MapBuilder.create_standard_map()
+        s_maze = MapBuilder.create_chokepoint_map()
+
+        s_mid = MapBuilder.create_standard_map()
+        s_mid.tanks[0].x, s_mid.tanks[0].y, s_mid.tanks[0].direction = 6, 7, Direction.UP
+        s_mid.tanks[1].x, s_mid.tanks[1].y, s_mid.tanks[1].direction = 6, 3, Direction.DOWN
+        s_mid.tanks[1].hp = 4
+        s_mid.bullets.append(Bullet(6, 4, Direction.DOWN, owner_id=1))
+
+        s_end = MapBuilder.create_standard_map()
+        s_end.walls.pop((6, 1), None)
+        s_end.tanks[0].x, s_end.tanks[0].y, s_end.tanks[0].direction = 6, 2, Direction.UP
+        s_end.tanks[1].x, s_end.tanks[1].y, s_end.tanks[1].direction = 4, 2, Direction.RIGHT
+        s_end.tanks[1].hp = 2
+        s_end.bases[1].hp = 2
+
+        return [
+            ("Opening", s_open),
+            ("Chokepoint", s_maze),
+            ("Midgame", s_mid),
+            ("Endgame", s_end),
+        ]
+
     def run_single_move_benchmark(self, depths=None):
         if depths is None:
             depths = [1, 2, 3]
 
-        print("1. RUNNING SINGLE-MOVE SEARCH BENCHMARK")
+        print("1. RUNNING SINGLE-MOVE SEARCH BENCHMARK (FAIR MULTI-SCENARIO)")
         self.single_move_results = []
-        state = MapBuilder.create_standard_map()
+        scenarios = self._build_scenarios()
 
         for d in depths:
             agent_list = [
@@ -49,12 +77,18 @@ class TankTournament:
             ]
 
             for name, ag in agent_list:
+                # Clear shared BFS distance cache so every agent starts under identical cold conditions
+                TankEvaluator.clear_cache()
+
                 t_list = []
                 n_list = []
                 p_list = []
+                first_act = None
 
-                for k in range(3):
-                    act = ag.choose_action(state, player_id = 0)
+                for _, sc_state in scenarios:
+                    act = ag.choose_action(sc_state, player_id = 0)
+                    if first_act is None:
+                        first_act = act
                     t_list.append(ag.stats.execution_time)
                     n_list.append(ag.stats.explored_nodes)
                     p_list.append(ag.stats.prune_count)
@@ -69,10 +103,10 @@ class TankTournament:
                 row["avg_time"] = t_avg
                 row["avg_nodes"] = n_avg
                 row["avg_prunes"] = p_avg
-                row["action"] = act.value
+                row["action"] = first_act.value if first_act else Action.STAY.value
                 self.single_move_results.append(row)
 
-                print(f"-> [Depth {d}] {name:32s} | Time: {t_avg:8.5f}s | Nodes: {n_avg:6.0f} | Prunes: {p_avg:4.0f} | Move: {act.value}")
+                print(f"-> [Depth {d}] {name:26s} | Time: {t_avg:8.5f}s | Nodes: {n_avg:6.0f} | Prunes: {p_avg:4.0f} | Opening Move: {row['action']}")
 
         return self.single_move_results
 
@@ -104,15 +138,16 @@ class TankTournament:
         avg1 = sum(t1) / max(1, len(t1))
         return winner, state.game_cycle, avg0, avg1
 
-    def run_tournament(self):
-        print("2. RUNNING HEAD-TO-HEAD ROUND-ROBIN TOURNAMENT")
+    def run_tournament(self, depth = 3):
+        print(f"2. RUNNING HEAD-TO-HEAD ROUND-ROBIN TOURNAMENT (EQUAL DEPTH d={depth})")
         self.match_results = []
 
+        # Equal search depth across all 4 configurations for a fair comparison (Req 2)
         configs = [
-            ("1. Minimax (d=2)", MinimaxAgent(depth = 2)),
-            ("2. Alpha-Beta (d=2)", AlphaBetaAgent(depth = 2)),
-            ("3. Heuristic Minimax (d=3)", HeuristicMinimaxAgent(depth = 3)),
-            ("4. Heuristic Alpha-Beta (d=3)", HeuristicAlphaBetaAgent(depth = 3)),
+            (f"1. Minimax (d={depth})", MinimaxAgent(depth = depth)),
+            (f"2. Alpha-Beta (d={depth})", AlphaBetaAgent(depth = depth)),
+            (f"3. Heuristic Minimax (d={depth})", HeuristicMinimaxAgent(depth = depth)),
+            (f"4. Heuristic Alpha-Beta (d={depth})", HeuristicAlphaBetaAgent(depth = depth)),
         ]
 
         for i in range(len(configs)):
@@ -122,6 +157,7 @@ class TankTournament:
                 name_b = configs[j][0]
                 agent_b = configs[j][1]
 
+                TankEvaluator.clear_cache()
                 win1, cyc1, a1, b1 = self.run_head_to_head_match(agent_a, agent_b, self.max_cycles)
                 if win1 == 0:
                     ws1 = name_a
@@ -130,6 +166,7 @@ class TankTournament:
                 else:
                     ws1 = "Draw"
 
+                TankEvaluator.clear_cache()
                 win2, cyc2, a2, b2 = self.run_head_to_head_match(agent_b, agent_a, self.max_cycles)
                 if win2 == 0:
                     ws2 = name_b

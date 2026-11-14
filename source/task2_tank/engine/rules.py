@@ -9,26 +9,35 @@ def inside(state, x, y):
     return False
 
 
-def hit_at(state, x, y, owner):
+def hit_at_detail(state, x, y, owner):
+    """Checks bullet collision at (x, y) and returns (hit, damaged)."""
     if (x, y) in state.walls:
         w = state.walls[(x, y)]
         if w.is_alive:
             w.take_damage(1)
-            return True
+            return True, True
 
     for key in state.tanks:
         t = state.tanks[key]
         if t.is_alive and t.x == x and t.y == y and t.player_id != owner:
             t.take_damage(1)
-            return True
+            return True, True
 
     for key in state.bases:
         b = state.bases[key]
         if b.is_alive and b.x == x and b.y == y:
-            b.take_damage(1)
-            return True
+            # Own base blocks the shot without taking friendly-fire damage
+            if b.player_id != owner:
+                b.take_damage(1)
+                return True, True
+            return True, False
 
-    return False
+    return False, False
+
+
+def hit_at(state, x, y, owner):
+    hit, _ = hit_at_detail(state, x, y, owner)
+    return hit
 
 
 class GameRules:
@@ -46,48 +55,61 @@ class GameRules:
             if d is not None:
                 GameRules._move_tank(new_state, player, d)
 
-        GameRules.step_bullets(new_state)
-
-        dead = []
-        for pos in new_state.walls:
-            if not new_state.walls[pos].is_alive:
-                dead.append(pos)
-        for pos in dead:
-            del new_state.walls[pos]
-
-        if player == 1:
-            new_state.game_cycle = new_state.game_cycle + 1
-        new_state.current_player = 1 - player
+        # Each bullet moves at most 3 cells per full cycle (1 cycle = P0 turn + P1 turn)
+        GameRules.step_bullets(new_state, active_owner=player)
+        GameRules.finish_turn(new_state, player)
 
         return new_state
 
     @staticmethod
-    def step_bullets(state):
+    def finish_turn(state, player):
+        dead = []
+        for pos in state.walls:
+            if not state.walls[pos].is_alive:
+                dead.append(pos)
+        for pos in dead:
+            del state.walls[pos]
+
+        if player == 1:
+            state.game_cycle = state.game_cycle + 1
+        state.current_player = 1 - player
+
+    @staticmethod
+    def step_bullets_one_cell(state, active_owner=None):
+        """Advances active bullets by 1 cell and returns [(x, y, damaged), ...] for hits."""
+        hits = []
         for bullet in state.bullets:
-            if bullet.is_active == False:
+            if not bullet.is_active:
+                continue
+            if active_owner is not None and bullet.owner_id != active_owner:
                 continue
 
             dx = bullet.direction.value[0]
             dy = bullet.direction.value[1]
+            bullet.x = bullet.x + dx
+            bullet.y = bullet.y + dy
 
-            i = 0
-            while i < Bullet.SPEED and bullet.is_active:
-                bullet.x = bullet.x + dx
-                bullet.y = bullet.y + dy
-
-                if not inside(state, bullet.x, bullet.y):
+            if not inside(state, bullet.x, bullet.y):
+                bullet.is_active = False
+            else:
+                hit, damaged = hit_at_detail(state, bullet.x, bullet.y, bullet.owner_id)
+                if hit:
                     bullet.is_active = False
-                else:
-                    if hit_at(state, bullet.x, bullet.y, bullet.owner_id):
-                        bullet.is_active = False
+                    hits.append((bullet.x, bullet.y, damaged))
 
-                i += 1
+        state.bullets = [b for b in state.bullets if b.is_active]
+        return hits
 
-        remain = []
-        for bullet in state.bullets:
-            if bullet.is_active:
-                remain.append(bullet)
-        state.bullets = remain
+    @staticmethod
+    def step_bullets(state, active_owner=None):
+        for _ in range(Bullet.SPEED):
+            has_moving = any(
+                b.is_active and (active_owner is None or b.owner_id == active_owner)
+                for b in state.bullets
+            )
+            if not has_moving:
+                break
+            GameRules.step_bullets_one_cell(state, active_owner=active_owner)
 
     @staticmethod
     def _move_tank(state, player, direction):
@@ -121,6 +143,15 @@ class GameRules:
         tank.x = nx
         tank.y = ny
 
+        # If tank steps onto a cell occupied by an active enemy bullet, collide immediately
+        for bullet in state.bullets:
+            if bullet.is_active and bullet.x == nx and bullet.y == ny and bullet.owner_id != player:
+                tank.take_damage(1)
+                bullet.is_active = False
+                if not tank.is_alive:
+                    break
+        state.bullets = [b for b in state.bullets if b.is_active]
+
     @staticmethod
     def _fire_bullet(state, player):
         if player not in state.tanks:
@@ -130,11 +161,6 @@ class GameRules:
         if not tank.is_alive:
             return
 
-        bx = tank.x + tank.direction.value[0]
-        by = tank.y + tank.direction.value[1]
-        new_bullet = Bullet(bx, by, tank.direction, player)
-
-        if inside(state, bx, by):
-            if hit_at(state, bx, by, player):
-                return
-            state.bullets.append(new_bullet)
+        # Spawn at tank cell so step_bullets moves 1..Bullet.SPEED (max 3 cells) cell-by-cell
+        new_bullet = Bullet(tank.x, tank.y, tank.direction, player)
+        state.bullets.append(new_bullet)

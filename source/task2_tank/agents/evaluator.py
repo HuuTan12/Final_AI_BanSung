@@ -14,7 +14,7 @@ Description:
 """
 
 from collections import deque
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 from task2_tank.engine.game_state import GameState
 from task2_tank.engine.actions import Direction
 
@@ -26,6 +26,11 @@ class TankEvaluator:
     """
 
     _dist_cache: Dict[Tuple, Dict[Tuple[int, int], int]] = {}
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clears cached distance fields (useful between independent benchmark runs)."""
+        cls._dist_cache.clear()
 
     def __init__(
         self,
@@ -56,8 +61,8 @@ class TankEvaluator:
         if sx == tx and sy == ty:
             return 0
 
-        wall_sig = tuple((pos, w.hp) for pos, w in state.walls.items() if w.is_alive)
-        cache_key = (state.width, state.height, tx, ty, hash(wall_sig))
+        wall_sig = tuple(sorted((pos, w.hp) for pos, w in state.walls.items() if w.is_alive))
+        cache_key = (state.width, state.height, tx, ty, wall_sig)
 
         dist_grid = cls._dist_cache.get(cache_key)
         if dist_grid is None:
@@ -117,72 +122,65 @@ class TankEvaluator:
 
         return dist
 
-    def evaluate(self, state: GameState, player_id: int) -> float:
-        """
-        Evaluates the game state from player_id's perspective.
-        """
-        # If terminal, return exact zero-sum utility
-        if state.is_terminal():
-            return state.get_utility(player_id)
-
-        opponent_id = 1 - player_id
+    def _side_score(self, state: GameState, pid: int) -> float:
+        """Computes one player's absolute positional strength before subtracting opponent's."""
+        opp_id = 1 - pid
         score = 0.0
 
-        my_tank = state.tanks.get(player_id)
-        opp_tank = state.tanks.get(opponent_id)
-        my_base = state.bases.get(player_id)
-        opp_base = state.bases.get(opponent_id)
+        my_tank = state.tanks.get(pid)
+        opp_tank = state.tanks.get(opp_id)
+        my_base = state.bases.get(pid)
+        opp_base = state.bases.get(opp_id)
 
-        # 1. Base HP difference (most critical factor)
         my_base_hp = my_base.hp if (my_base and my_base.is_alive) else 0
-        opp_base_hp = opp_base.hp if (opp_base and opp_base.is_alive) else 0
-        score += self.w_base_hp * (my_base_hp - opp_base_hp)
-
-        # 2. Tank HP difference
         my_tank_hp = my_tank.hp if (my_tank and my_tank.is_alive) else 0
         opp_tank_hp = opp_tank.hp if (opp_tank and opp_tank.is_alive) else 0
-        score += self.w_tank_hp * (my_tank_hp - opp_tank_hp)
 
-        # 3. Terrain-aware tactical distance to enemy base (accounts for walls & multi-HP obstacles)
+        # 1. Remaining Base & Tank HP
+        score += self.w_base_hp * my_base_hp
+        score += self.w_tank_hp * my_tank_hp
+
+        # 2. Shortest terrain-aware distance to enemy base
         if my_tank and my_tank.is_alive and opp_base and opp_base.is_alive:
-            my_dist_to_opp_base = self.get_tactical_distance(state, my_tank.x, my_tank.y, opp_base.x, opp_base.y)
-            score -= self.w_dist_base * my_dist_to_opp_base
+            dist_to_opp_base = self.get_tactical_distance(state, my_tank.x, my_tank.y, opp_base.x, opp_base.y)
+            score -= self.w_dist_base * dist_to_opp_base
 
-        if opp_tank and opp_tank.is_alive and my_base and my_base.is_alive:
-            opp_dist_to_my_base = self.get_tactical_distance(state, opp_tank.x, opp_tank.y, my_base.x, my_base.y)
-            score += self.w_dist_base * opp_dist_to_my_base
-
-        # 4. Tank to Tank distance
-        if my_tank and my_tank.is_alive and opp_tank and opp_tank.is_alive:
+        # 3. Hunt damaged enemy tank when ahead in HP (keeps zero-sum symmetry)
+        if my_tank and my_tank.is_alive and opp_tank and opp_tank.is_alive and my_tank_hp > opp_tank_hp:
             tank_dist = abs(my_tank.x - opp_tank.x) + abs(my_tank.y - opp_tank.y)
-            score -= self.w_dist_tank * tank_dist
+            score -= self.w_dist_tank * 0.25 * (my_tank_hp - opp_tank_hp) * tank_dist
 
-        # 5. Line of fire bonus / penalty
+        # 4. Direct unobstructed line of fire to enemy base or enemy tank
         if my_tank and my_tank.is_alive:
             if self._has_line_of_sight(state, my_tank.x, my_tank.y, my_tank.direction, opp_base):
                 score += self.w_line_of_fire * 2.0
             if opp_tank and opp_tank.is_alive and self._has_line_of_sight(state, my_tank.x, my_tank.y, my_tank.direction, opp_tank):
                 score += self.w_line_of_fire
 
-        if opp_tank and opp_tank.is_alive:
-            if self._has_line_of_sight(state, opp_tank.x, opp_tank.y, opp_tank.direction, my_base):
-                score -= self.w_line_of_fire * 2.0
-            if my_tank and my_tank.is_alive and self._has_line_of_sight(state, opp_tank.x, opp_tank.y, opp_tank.direction, my_tank):
-                score -= self.w_line_of_fire
-
-        # 6. Incoming bullet danger (threat evasion)
-        if my_tank and my_tank.is_alive:
-            for bullet in state.bullets:
-                if bullet.is_active and bullet.owner_id == opponent_id:
-                    if self._is_bullet_approaching(bullet, my_tank.x, my_tank.y):
-                        score -= self.w_bullet_danger
+        # 5. Threat from enemy bullets heading directly at my tank or base
+        for bullet in state.bullets:
+            if bullet.is_active and bullet.owner_id == opp_id:
+                if my_tank and my_tank.is_alive and self._is_bullet_approaching(bullet, my_tank.x, my_tank.y, state):
+                    score -= self.w_bullet_danger
+                if my_base and my_base.is_alive and self._is_bullet_approaching(bullet, my_base.x, my_base.y, state):
+                    score -= self.w_bullet_danger * 0.8
 
         return score
+
+    def evaluate(self, state: GameState, player_id: int) -> float:
+        """
+        Zero-sum heuristic evaluation from player_id's perspective.
+        Guarantees evaluate(state, 0) == -evaluate(state, 1).
+        """
+        if state.is_terminal():
+            return state.get_utility(player_id)
+
+        return self._side_score(state, player_id) - self._side_score(state, 1 - player_id)
 
     def _has_line_of_sight(self, state: GameState, x: int, y: int, direction: Direction, target) -> bool:
         """
         Raycasts from (x, y) along direction up to max board dimension to check if target is visible.
-        Returns True if target is in direct line of fire without blocking walls.
+        Returns True if target is in direct line of fire without blocking walls, bases, or tanks.
         """
         if not target or not target.is_alive:
             return False
@@ -196,24 +194,39 @@ class TankEvaluator:
                 break
             if cx == target.x and cy == target.y:
                 return True
-            # Blocked by living wall
             if (cx, cy) in state.walls and state.walls[(cx, cy)].is_alive:
+                break
+            if any(b.is_alive and b.x == cx and b.y == cy for b in state.bases.values()):
+                break
+            if any(t.is_alive and t.x == cx and t.y == cy for t in state.tanks.values()):
                 break
             cx += dx
             cy += dy
 
         return False
 
-    def _is_bullet_approaching(self, bullet, target_x: int, target_y: int) -> bool:
+    def _is_bullet_approaching(
+        self, bullet, target_x: int, target_y: int, state: Optional[GameState] = None
+    ) -> bool:
         """
-        Checks whether an active bullet is within 3 cells heading directly at (target_x, target_y).
+        Checks whether an active bullet is within 3 cells heading directly at (target_x, target_y)
+        without hitting a wall first.
         """
         dx, dy = bullet.direction.value
         bx, by = bullet.x, bullet.y
 
         for step in range(1, 4):
-            if bx + dx * step == target_x and by + dy * step == target_y:
+            cx = bx + dx * step
+            cy = by + dy * step
+            if cx == target_x and cy == target_y:
                 return True
+            if state is not None:
+                if not (0 <= cx < state.width and 0 <= cy < state.height):
+                    break
+                if (cx, cy) in state.walls and state.walls[(cx, cy)].is_alive:
+                    break
+                if any(b.is_alive and b.x == cx and b.y == cy for b in state.bases.values()):
+                    break
         return False
 
     @staticmethod
@@ -241,6 +254,8 @@ class TankEvaluator:
         opp_tank = state.tanks.get(1 - player_id)
 
         if action == Action.FIRE:
+            my_base = state.bases.get(player_id)
+
             dx, dy = tank.direction.value
             fx, fy = tank.x + dx, tank.y + dy
 
@@ -258,6 +273,9 @@ class TankEvaluator:
                 if opp_tank and opp_tank.is_alive and cx == opp_tank.x and cy == opp_tank.y:
                     first_hit = "tank"
                     break
+                if my_base and my_base.is_alive and cx == my_base.x and cy == my_base.y:
+                    first_hit = "own_base"
+                    break
                 if (cx, cy) in state.walls and state.walls[(cx, cy)].is_alive:
                     first_hit = ("wall", cx, cy)
                     break
@@ -268,14 +286,16 @@ class TankEvaluator:
                 return 120.0  # Clear shot at enemy base!
             if first_hit == "tank":
                 return 100.0  # Clear shot at enemy tank!
+            if first_hit == "own_base":
+                return 1.0    # Blocked by own base shield
 
-            # If hitting a wall within effective bullet range (up to 4 cells) that blocks path to enemy
+            # If hitting a wall within effective bullet range (up to 3 cells) that blocks path to enemy
             if first_hit and first_hit[0] == "wall":
                 wx, wy = first_hit[1], first_hit[2]
                 wall_dist = abs(wx - tank.x) + abs(wy - tank.y)
                 wall_obj = state.walls.get((wx, wy))
                 w_hp = wall_obj.hp if wall_obj else 3
-                if wall_dist <= 4:
+                if wall_dist <= 3:
                     if opp_base and opp_base.is_alive:
                         curr_dist = TankEvaluator.get_tactical_distance(state, tank.x, tank.y, opp_base.x, opp_base.y)
                         target_dist = TankEvaluator.get_tactical_distance(state, wx, wy, opp_base.x, opp_base.y)

@@ -25,7 +25,7 @@ class HeuristicAlphaBetaAgent(BaseAgent):
     3. Dynamic move ordering (Slide 25) to maximize pruning efficiency
     """
 
-    def __init__(self, depth: int = 4, evaluator: Optional[TankEvaluator] = None):
+    def __init__(self, depth: int = 3, evaluator: Optional[TankEvaluator] = None):
         super().__init__(name=f"Heuristic Alpha-Beta (Depth {depth})")
         self.depth = depth
         self.evaluator = evaluator if evaluator is not None else TankEvaluator()
@@ -44,7 +44,7 @@ class HeuristicAlphaBetaAgent(BaseAgent):
         if len(legal_actions) == 1:
             return legal_actions[0]
 
-        # Order moves at root to maximize early beta cutoffs
+        # Order moves at root to maximize early beta cutoffs and resolve ties consistently
         ordered_actions = self._order_moves(state, legal_actions, player_id)
 
         best_score = float("-inf")
@@ -57,14 +57,9 @@ class HeuristicAlphaBetaAgent(BaseAgent):
             successor = GameRules.apply_action(state, action)
             score = self._min_value(successor, self.depth - 1, alpha, beta, player_id)
 
-            if score > best_score + 1e-4:
+            if score > best_score:
                 best_score = score
                 best_action = action
-            elif abs(score - best_score) <= 1e-4:
-                # Break ties in favor of tactical progress
-                if TankEvaluator.action_tactical_priority(state, action, player_id) > TankEvaluator.action_tactical_priority(state, best_action, player_id):
-                    best_score = score
-                    best_action = action
             alpha = max(alpha, best_score)
 
         self.stats.execution_time = time.perf_counter() - start_time
