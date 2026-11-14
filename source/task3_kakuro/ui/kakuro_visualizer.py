@@ -176,39 +176,38 @@ class KakuroVisualizer:
         gap = 14
         btn_w = (content_w - gap) // 2  # 278px
 
-        # Section 1: 6 Map Selector Buttons (3 rows x 2 cols)
-        self.btn_maps: List[pygame.Rect] = []
-        for i in range(len(self.available_maps)):
-            col = i % 2
-            row = i // 2
-            bx = px + col * (btn_w + gap)
-            by = 114 + row * 38
-            self.btn_maps.append(pygame.Rect(bx, by, btn_w, 32))
+        # Section 1: Compact Map Cycler (< PREV, Current Map Name Card, NEXT >)
+        prev_w = 100
+        next_w = 100
+        card_w = content_w - prev_w - next_w - 20
+        self.btn_map_prev = pygame.Rect(px, 108, prev_w, 38)
+        self.map_display_rect = pygame.Rect(px + prev_w + 10, 108, card_w, 38)
+        self.btn_map_next = pygame.Rect(px + prev_w + 10 + card_w + 10, 108, next_w, 38)
 
         # Section 2: Telemetry Card, Scrubber Bar & 3-Line Trace Console
-        self.telemetry_card_rect = pygame.Rect(px, 260, content_w, 228)
-        self.progress_bar_rect = pygame.Rect(px + 16, 360, content_w - 32, 12)
-        self.progress_hit_rect = pygame.Rect(px + 10, 352, content_w - 20, 28)
-        self.console_rect = pygame.Rect(px + 16, 386, content_w - 32, 90)
+        self.telemetry_card_rect = pygame.Rect(px, 188, content_w, 238)
+        self.progress_bar_rect = pygame.Rect(px + 16, 284, content_w - 32, 12)
+        self.progress_hit_rect = pygame.Rect(px + 10, 276, content_w - 20, 28)
+        self.console_rect = pygame.Rect(px + 16, 308, content_w - 32, 104)
 
         # Section 3: Playback & Speed Control Buttons
-        self.btn_play = pygame.Rect(px, 520, btn_w, 38)
-        self.btn_solve = pygame.Rect(px + btn_w + gap, 520, btn_w, 38)
+        self.btn_play = pygame.Rect(px, 474, btn_w, 38)
+        self.btn_solve = pygame.Rect(px + btn_w + gap, 474, btn_w, 38)
 
-        self.btn_back = pygame.Rect(px, 566, btn_w, 36)
-        self.btn_fwd = pygame.Rect(px + btn_w + gap, 566, btn_w, 36)
+        self.btn_back = pygame.Rect(px, 520, btn_w, 36)
+        self.btn_fwd = pygame.Rect(px + btn_w + gap, 520, btn_w, 36)
 
-        self.btn_reset = pygame.Rect(px, 610, btn_w, 36)
-        self.btn_pencil = pygame.Rect(px + btn_w + gap, 610, btn_w, 36)
+        self.btn_reset = pygame.Rect(px, 564, btn_w, 36)
+        self.btn_pencil = pygame.Rect(px + btn_w + gap, 564, btn_w, 36)
 
         speed_w = 172
         pill_w = content_w - 2 * speed_w - 2 * 12
-        self.btn_slower = pygame.Rect(px, 654, speed_w, 32)
-        self.speed_pill_rect = pygame.Rect(px + speed_w + 12, 654, pill_w, 32)
-        self.btn_faster = pygame.Rect(px + speed_w + 12 + pill_w + 12, 654, speed_w, 32)
+        self.btn_slower = pygame.Rect(px, 608, speed_w, 32)
+        self.speed_pill_rect = pygame.Rect(px + speed_w + 12, 608, pill_w, 32)
+        self.btn_faster = pygame.Rect(px + speed_w + 12 + pill_w + 12, 608, speed_w, 32)
 
         # Section 4: Legend Card
-        self.legend_card_rect = pygame.Rect(px, 718, content_w, 108)
+        self.legend_card_rect = pygame.Rect(px, 688, content_w, 126)
 
     def _load_svg_surface(self, svg_path: str, target_h: int, hex_color: str) -> Optional[pygame.Surface]:
         """Parses an SVG digit asset file, injects fill color and dimensions, and rasterizes it."""
@@ -483,6 +482,12 @@ class KakuroVisualizer:
                     elif event.key == pygame.K_END:
                         self.is_playing = False
                         self.jump_to_end()
+                    elif event.key in (pygame.K_m, pygame.K_n):
+                        self.current_map_idx = (self.current_map_idx + 1) % len(self.available_maps)
+                        self.load_puzzle(self.available_maps[self.current_map_idx][1])
+                    elif event.key == pygame.K_b:
+                        self.current_map_idx = (self.current_map_idx - 1) % len(self.available_maps)
+                        self.load_puzzle(self.available_maps[self.current_map_idx][1])
                     elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                         self.playback_speed = max(0.001, self.playback_speed / 1.6)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
@@ -536,12 +541,19 @@ class KakuroVisualizer:
 
     def _handle_click(self, mouse_pos: Tuple[int, int]):
         """Handles mouse clicks on puzzle selector and control buttons."""
-        for i, rect in enumerate(self.btn_maps):
-            if rect.collidepoint(mouse_pos):
-                if self.current_map_idx != i:
-                    self.current_map_idx = i
-                    self.load_puzzle(self.available_maps[i][1])
-                return
+        if self.btn_map_prev.collidepoint(mouse_pos):
+            self.current_map_idx = (self.current_map_idx - 1) % len(self.available_maps)
+            self.load_puzzle(self.available_maps[self.current_map_idx][1])
+            return
+        elif self.btn_map_next.collidepoint(mouse_pos):
+            self.current_map_idx = (self.current_map_idx + 1) % len(self.available_maps)
+            self.load_puzzle(self.available_maps[self.current_map_idx][1])
+            return
+        elif self.map_display_rect.collidepoint(mouse_pos):
+            # Clicking center card also advances to next map
+            self.current_map_idx = (self.current_map_idx + 1) % len(self.available_maps)
+            self.load_puzzle(self.available_maps[self.current_map_idx][1])
+            return
 
         if self.btn_play.collidepoint(mouse_pos):
             if self.current_event_idx >= len(self.events):
@@ -949,35 +961,33 @@ class KakuroVisualizer:
 
         pygame.draw.line(self.screen, DIVIDER_COLOR, (px, rp.y + 68), (rp.right - 22, rp.y + 68), 1)
 
-        # --- SECTION 1: PUZZLE SELECTOR ---
-        self.screen.blit(self.font_heading.render("1. SELECT PUZZLE BENCHMARK", True, TEXT_SUB), (px, 92))
-        hint_map = self.font_status.render(f"{len(self.available_maps)} Validated Maps", True, TEXT_MUTED)
-        self.screen.blit(hint_map, (rp.right - 22 - hint_map.get_width(), 90))
+        # --- SECTION 1: COMPACT PUZZLE CYCLER (< PREV, Current Map, NEXT >) ---
+        self.screen.blit(self.font_heading.render("1. SELECT PUZZLE BENCHMARK", True, TEXT_SUB), (px, 86))
+        hint_map = self.font_status.render(
+            f"Map {self.current_map_idx + 1} of {len(self.available_maps)}",
+            True,
+            TEXT_MUTED
+        )
+        self.screen.blit(hint_map, (rp.right - 22 - hint_map.get_width(), 84))
 
-        for i, (name, _) in enumerate(self.available_maps):
-            btn_rect = self.btn_maps[i]
-            is_active = (self.current_map_idx == i)
-            is_hover = btn_rect.collidepoint(mouse_pos)
+        # 1.1 Left Button: < PREV
+        self._draw_btn(self.btn_map_prev, "< PREV", BTN_SECONDARY, mouse_pos)
 
-            if is_active:
-                bg_col = BTN_SUCCESS
-                border_col = (110, 231, 183)
-            elif is_hover:
-                bg_col = (64, 80, 105)
-                border_col = (100, 116, 139)
-            else:
-                bg_col = BTN_SECONDARY
-                border_col = BORDER_COLOR
+        # 1.2 Center Display: Current Map Name Card
+        mc = self.map_display_rect
+        is_mc_hover = mc.collidepoint(mouse_pos)
+        pygame.draw.rect(self.screen, CARD_INNER if not is_mc_hover else (30, 38, 52), mc, border_radius=7)
+        pygame.draw.rect(self.screen, (16, 185, 129), mc, 1, border_radius=7)
 
-            pygame.draw.rect(self.screen, bg_col, btn_rect, border_radius=6)
-            pygame.draw.rect(self.screen, border_col, btn_rect, 1, border_radius=6)
+        cur_label, _ = self.available_maps[self.current_map_idx]
+        cur_surf = self.font_btn.render(f"[*] {cur_label}", True, (255, 255, 255))
+        self.screen.blit(cur_surf, cur_surf.get_rect(center=mc.center))
 
-            label_str = f"[*] {name}" if is_active else name
-            txt = self.font_btn.render(label_str, True, (255, 255, 255) if is_active else TEXT_MAIN)
-            self.screen.blit(txt, txt.get_rect(center=btn_rect.center))
+        # 1.3 Right Button: NEXT >
+        self._draw_btn(self.btn_map_next, "NEXT >", BTN_SECONDARY, mouse_pos)
 
         # --- SECTION 2: EXECUTION TELEMETRY, BREAKDOWN & 3-LINE TRACE CONSOLE ---
-        self.screen.blit(self.font_heading.render("2. EXECUTION TELEMETRY & LIVE TRACE LOG", True, TEXT_SUB), (px, 238))
+        self.screen.blit(self.font_heading.render("2. EXECUTION TELEMETRY & LIVE TRACE LOG", True, TEXT_SUB), (px, 164))
 
         if self.current_event_idx >= len(self.events) and len(self.events) > 0:
             state_str, state_col = "SOLVED (100% VALID)", ACCENT_EMERALD
@@ -988,7 +998,7 @@ class KakuroVisualizer:
         else:
             state_str, state_col = "READY", TEXT_MUTED
         st_lbl = self.font_metric_lbl.render(f"STATUS: {state_str}", True, state_col)
-        self.screen.blit(st_lbl, (rp.right - 22 - st_lbl.get_width(), 240))
+        self.screen.blit(st_lbl, (rp.right - 22 - st_lbl.get_width(), 166))
 
         tc = self.telemetry_card_rect
         pygame.draw.rect(self.screen, CARD_BG, tc, border_radius=10)
@@ -1019,7 +1029,7 @@ class KakuroVisualizer:
 
         # Cumulative Step Breakdown Counters (Init/AC-3 Prunes | FC Prunes | Assigns | Backtracks)
         c_init_ac3, c_fc, c_assign, c_bt = self.step_counts[min(self.current_event_idx, len(self.step_counts) - 1)]
-        breakdown_y = tc.y + 66
+        breakdown_y = tc.y + 64
         bd_items = [
             (f"Init/AC-3 Prunes: {c_init_ac3:,}", CLUE_V_COLOR),
             (f"ForwardCheck: {c_fc:,}", (125, 211, 252)),
@@ -1060,7 +1070,7 @@ class KakuroVisualizer:
             self._draw_console_line(cons.x + 10, cons.y + 10, 0, "INIT", (100, 116, 139), self.status_message, True)
             self._draw_console_line(
                 cons.x + 10,
-                cons.y + 37,
+                cons.y + 38,
                 0,
                 "READY",
                 ACCENT_CYAN,
@@ -1069,7 +1079,7 @@ class KakuroVisualizer:
             )
             self._draw_console_line(
                 cons.x + 10,
-                cons.y + 64,
+                cons.y + 66,
                 0,
                 "TIP",
                 ACCENT_EMERALD,
@@ -1085,7 +1095,7 @@ class KakuroVisualizer:
                 tag_t, tag_c = self._get_event_badge(ev)
                 self._draw_console_line(
                     cons.x + 10,
-                    cons.y + 8 + row_i * 27,
+                    cons.y + 8 + row_i * 28,
                     step_no,
                     tag_t,
                     tag_c,
@@ -1094,9 +1104,9 @@ class KakuroVisualizer:
                 )
 
         # --- SECTION 3: PLAYBACK CONTROLS ---
-        self.screen.blit(self.font_heading.render("3. PLAYBACK & SPEED CONTROLS", True, TEXT_SUB), (px, 498))
-        kb_hint = self.font_status.render("Keys: [Space] Play  [Arrows] Step  [R] Reset  [P] Pencil", True, TEXT_MUTED)
-        self.screen.blit(kb_hint, (rp.right - 22 - kb_hint.get_width(), 496))
+        self.screen.blit(self.font_heading.render("3. PLAYBACK & SPEED CONTROLS", True, TEXT_SUB), (px, 448))
+        kb_hint = self.font_status.render("Keys: [Space] Play  [Arrows] Step  [B/N] Map  [R] Reset", True, TEXT_MUTED)
+        self.screen.blit(kb_hint, (rp.right - 22 - kb_hint.get_width(), 446))
 
         play_label = "PAUSE [Space]" if self.is_playing else "PLAY / START [Space]"
         play_col = BTN_PAUSED if self.is_playing else BTN_PRIMARY
@@ -1122,7 +1132,7 @@ class KakuroVisualizer:
         self.screen.blit(spd_surf, spd_surf.get_rect(center=self.speed_pill_rect.center))
 
         # --- SECTION 4: VISUAL LEGEND ---
-        self.screen.blit(self.font_heading.render("4. VISUAL LEGEND", True, TEXT_SUB), (px, 696))
+        self.screen.blit(self.font_heading.render("4. VISUAL LEGEND", True, TEXT_SUB), (px, 664))
         lc = self.legend_card_rect
         pygame.draw.rect(self.screen, CARD_BG, lc, border_radius=10)
         pygame.draw.rect(self.screen, BORDER_COLOR, lc, 1, border_radius=10)
@@ -1140,7 +1150,11 @@ class KakuroVisualizer:
             row = i // 2
             col_idx = i % 2
             bx = lc.x + 16 + col_idx * 276
-            by = lc.y + 14 + row * 30
+            by = lc.y + 14 + row * 34
+            box = pygame.Rect(bx, by, 18, 18)
+            pygame.draw.rect(self.screen, fill_c, box, border_radius=4)
+            pygame.draw.rect(self.screen, border_c, box, 2, border_radius=4)
+            self.screen.blit(self.font_body.render(text, True, TEXT_SUB), (bx + 26, by))
             box = pygame.Rect(bx, by, 18, 18)
             pygame.draw.rect(self.screen, fill_c, box, border_radius=4)
             pygame.draw.rect(self.screen, border_c, box, 2, border_radius=4)
